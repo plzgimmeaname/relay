@@ -1,0 +1,11 @@
+{
+  "name": "relay-cli",
+  "version": "0.1.0",
+  "description": "one session across every coding CLI: shared transcript, priority-ordered credit failover, AGENTS.md sync",
+  "license": "MIT",
+  "bin": { "relay": "bin/relay.js" },
+  "main": "lib/app.js",
+  "files": ["bin", "lib", "README.md"],
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node test/run.js" }
+}
