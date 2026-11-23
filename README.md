@@ -56,6 +56,19 @@ Quota and auth failures mark a CLI out of credits (cleared automatically after
 3 hours, or now with `/forget`). Anything else is a soft 10-minute cooldown, and
 the failing output is saved under `~/.relay/probes/` for tuning patterns.
 
+## Full-screen apps (pseudo-terminal)
+
+Some agents only run as a full-screen terminal UI and have no print or JSON mode. When a plain
+probe shows that, `/connect` offers to drive the app through a pseudo-terminal: relay starts it,
+answers its terminal queries, types the prompt, waits for the screen to settle, and reads the
+reply off an emulated screen (`lib/vt.js`, `lib/ptyrun.js`; needs `python3` for the pty shim).
+
+- Slower and best effort: one app launch per turn, no native resume (the digest is replayed).
+- Per-CLI tuning lives under `pty` in `config.json`: `idleMs`, `minWaitMs`, `startupMs`,
+  `cutBefore` (regex where the footer starts), `drop` (regexes for lines to discard).
+- **Check the app's terms first.** Some apps forbid scripted use and warn or ban accounts.
+  Relay asks before probing, and stops using an app that says it was caught (`blocked`).
+
 ## Commands
 
 | inside relay           | does                                                     |

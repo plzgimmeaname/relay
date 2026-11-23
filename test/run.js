@@ -345,6 +345,108 @@ test('interrupting a turn stops there and does not fail over', async () => {
   assert.equal(out.res.kind, 'aborted');
 });
 
+test('failed turns are written to the relay log', async () => {
+  const log = require('../lib/log');
+  reset({ order: ['ghost'], backends: { ghost: { command: '/no/such/cli-binary', dialect: 'claude' } } });
+  const { app } = ctx();
+  await app.turn('anything');
+  assert.ok(log.tail(10).some((l) => /turn failed on ghost/.test(l)), 'expected a "turn failed" line in relay.log');
+});
+
+test('relay --new starts a fresh session instead of continuing the last one', () => {
+  const { spawnSync } = require('child_process');
+  const run = (...args) => spawnSync(process.execPath, [path.join(DIR, '..', 'bin', 'relay.js'), ...args], { cwd: CWD, encoding: 'utf8', input: '/exit\n', env: { ...process.env, NO_COLOR: '1' } });
+  const sid = (out) => ((out.stdout || '').match(/session ([0-9a-f]{8}) saved/) || [])[1];
+  const a = sid(run());
+  const b = sid(run());
+  const c = sid(run('--new'));
+  assert.ok(a && a === b, 'plain relay should continue the same session');
+  assert.ok(c && c !== a, '--new should create a different session');
+});
+
+test('a full-screen app is driven through a pseudo-terminal and its reply is read off the screen', async () => {
+  const { runPty } = require('../lib/ptyrun');
+  const def = { command: process.execPath, pty: { cols: 100, rows: 24, startupMs: 8000, quietMs: 400, idleMs: 900, minWaitMs: 500 } };
+  const r = await runPty({ def, args: [path.join(DIR, 'fake-tui.js')], prompt: 'Reply with exactly the nine characters: RELAY_OK', cwd: CWD, env: process.env, timeoutMs: 30000 });
+  assert.equal(r.ok, true, `kind=${r.kind} raw=${r.raw}`);
+  assert.equal(r.text, 'RELAY_OK', `got: ${JSON.stringify(r.text)}`);
+});
+
+test('pty backend returns a normal result through Backend.run, with multi-line prompts', async () => {
+  const { Backend } = require('../lib/backend');
+  const def = { command: process.execPath, dialect: 'pty', protocol: { args: [path.join(DIR, 'fake-tui.js')] }, pty: { cols: 100, rows: 24, startupMs: 8000, quietMs: 400, idleMs: 900, minWaitMs: 500 }, quota: [], auth: [] };
+  const res = await new Backend(def, { timeoutMs: 30000 }).run({ prompt: 'first line\nsecond line please echo', digest: '', systemPrompt: '', cwd: CWD });
+  assert.equal(res.ok, true, `kind=${res.kind} raw=${res.raw}`);
+  assert.match(res.text, /ECHO: .*please echo/);
+  assert.equal(res.dialect, 'pty');
+});
+
+test('an app that objects to scripted use is reported as blocked, not as an answer', async () => {
+  const { Backend } = require('../lib/backend');
+  const def = { command: process.execPath, dialect: 'pty', protocol: { args: [path.join(DIR, 'fake-tui.js')] }, env: { FAKE_REPLY: 'Error: this message breaks the usage policy (Scripted or automated use). Strike 1 today.' }, pty: { cols: 100, rows: 24, startupMs: 8000, quietMs: 400, idleMs: 900, minWaitMs: 500 }, quota: [], auth: [] };
+  const res = await new Backend(def, { timeoutMs: 30000 }).run({ prompt: 'hello there friend', digest: '', systemPrompt: '', cwd: CWD });
+  assert.equal(res.ok, false);
+  assert.equal(res.kind, 'blocked');
+});
+
+test('agent assignment runs on its pinned cli + model and persists the session', async () => {
+  const qc = { command: process.execPath, prefixArgs: [path.join(DIR, 'fake-claude.js')], dialect: 'claude', env: { FAKE_MODE: 'ok', FAKE_NAME: 'qc', FAKE_STATE_DIR: root } };
+  reset({ order: ['qc', 'jd', 'tx'], backends: { qc, jd: LAYOUT.backends.jd, tx: LAYOUT.backends.tx } });
+  const config = loadConfig();
+  const registry = new Registry(config.home, config);
+  const cwdA = path.join(root, 'repo-a');
+  fs.mkdirSync(cwdA, { recursive: true });
+  const agent = new (require('../lib/agent').Agent)({ name: 'alpha', backend: 'qc', model: 'sonnet-4', cwd: cwdA, home: config.home, config, registry });
+  const out = await agent.turn('deploy the login feature');
+  assert.equal(out.ok, true);
+  assert.equal(out.backend, 'qc');
+  assert.match(out.res.text, /\[qc\]/);
+  const seen = JSON.parse(fs.readFileSync(path.join(root, 'last-seen'), 'utf8'));
+  assert.ok(seen.argv.includes('-m') && seen.argv.includes('sonnet-4'), 'model flag travels to the CLI');
+  assert.equal(agent.sessionId, sessionIdOf(agent), 'session id recorded');
+  const listed = require('../lib/agent').listAgents(config.home);
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].name, 'alpha');
+  assert.equal(listed[0].backend, 'qc');
+  assert.equal(listed[0].model, 'sonnet-4');
+  assert.equal(listed[0].cwd, cwdA);
+});
+
+test('re-running an agent resumes its own session natively instead of re-sending the digest', async () => {
+  reset();
+  const config = loadConfig();
+  const registry = new Registry(config.home, config);
+  const cwdB = path.join(root, 'repo-b');
+  fs.mkdirSync(cwdB, { recursive: true });
+  const agent = new (require('../lib/agent').Agent)({ name: 'beta', backend: 'jd', model: null, cwd: cwdB, home: config.home, config, registry });
+  await agent.turn('remember delta');
+  const firstSid = agent.sessionId;
+  await agent.turn('remember epsilon');
+  const seen = JSON.parse(fs.readFileSync(path.join(root, 'last-seen-junie'), 'utf8'));
+  assert.equal(seen.resumed, true, 'second turn passes --session-id');
+  assert.equal(seen.digest, false, 'no digest on native resume');
+  assert.equal(agent.sessionId, firstSid, 'same session across turns');
+});
+
+test('agent pins its cli so a credit failure on it does not silently fail over', async () => {
+  reset({ order: ['qc', 'jd'], backends: { qc: LAYOUT.backends.qc, jd: LAYOUT.backends.jd } });
+  const config = loadConfig();
+  const registry = new Registry(config.home, config);
+  const cwdC = path.join(root, 'repo-c');
+  fs.mkdirSync(cwdC, { recursive: true });
+  // qc is out of credits; agent beta pinned to jd should still answer on jd
+  registry.markExhausted('qc', { hard: true, reason: 'credits' });
+  const agent = new (require('../lib/agent').Agent)({ name: 'gamma', backend: 'jd', model: null, cwd: cwdC, home: config.home, config, registry });
+  const out = await agent.turn('override on jd');
+  assert.equal(out.ok, true);
+  assert.equal(out.backend, 'jd');
+  assert.match(out.res.text, /\[jd\]/);
+});
+
+function sessionIdOf(agent) {
+  return agent.session && agent.session.header.sid;
+}
+
 (async () => {
   let failed = 0;
   for (const [name, fn] of tests) {
