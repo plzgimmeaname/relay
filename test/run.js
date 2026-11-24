@@ -1,3 +1,4 @@
+process.env.NO_COLOR = '1';
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
@@ -441,6 +442,240 @@ test('agent pins its cli so a credit failure on it does not silently fail over',
   assert.equal(out.ok, true);
   assert.equal(out.backend, 'jd');
   assert.match(out.res.text, /\[jd\]/);
+});
+
+test('built-in configurations exist for widely used coding CLIs', async () => {
+  const { BUILTIN_BACKENDS } = require('../lib/config');
+  const expected = [
+    'agy', 'claude', 'kilo', 'freebuff', 'qwen', 'junie', 'opencode',
+    'aider', 'cursor', 'copilot', 'ollama', 'gemini', 'openai', 'goose',
+    'cody', 'openhands', 'llm', 'sgpt', 'mentat', 'plandex', 'cline', 'amazon-q'
+  ];
+  for (const name of expected) {
+    assert.ok(BUILTIN_BACKENDS[name], `preset for ${name} exists`);
+    assert.ok(BUILTIN_BACKENDS[name].command, `${name} has a command`);
+    assert.ok(BUILTIN_BACKENDS[name].dialect, `${name} has a dialect`);
+    assert.ok(BUILTIN_BACKENDS[name].quota?.length > 0, `${name} has quota signals`);
+  }
+});
+
+test('scanner detects installed CLIs and reports their paths', async () => {
+  const { scanInstalledCLIs } = require('../lib/scanner');
+  const results = scanInstalledCLIs();
+  assert.ok(Array.isArray(results));
+  assert.ok(results.length >= 7);
+  const agy = results.find((r) => r.name === 'agy');
+  assert.ok(agy);
+  assert.equal(agy.label, 'Antigravity (Google)');
+  assert.equal(agy.freeTier, true);
+});
+
+test('credit pool round-robin strategy balances turns across ready backends', async () => {
+  reset({
+    order: ['b1', 'b2'],
+    strategy: 'pool',
+    backends: {
+      b1: fake('fake-junie.js', 'b1', 'ok', 'junie'),
+      b2: fake('fake-junie.js', 'b2', 'ok', 'junie'),
+    },
+  });
+  const { app, registry } = ctx();
+  assert.equal(registry.getStrategy(), 'pool');
+
+  // First turn picks one
+  const first = await app.turn('turn 1');
+  assert.ok(first.ok);
+  const firstBackend = first.backend;
+
+  // Second turn picks the other backend under pool strategy!
+  const second = await app.turn('turn 2');
+  assert.ok(second.ok);
+  const secondBackend = second.backend;
+
+  assert.notEqual(firstBackend, secondBackend, 'pool strategy alternates backends to balance rate limits');
+});
+
+test('free-first strategy prioritizes free tiers before paid credits', async () => {
+  reset({
+    order: ['paid1', 'free1'],
+    strategy: 'free-first',
+    backends: {
+      paid1: { ...fake('fake-junie.js', 'paid1', 'ok', 'junie'), freeTier: false },
+      free1: { ...fake('fake-junie.js', 'free1', 'ok', 'junie'), freeTier: true },
+    },
+  });
+  const { app, registry } = ctx();
+  assert.equal(registry.getStrategy(), 'free-first');
+
+  const picked = registry.pick();
+  assert.equal(picked, 'free1', 'free-first strategy selects free tier CLI before paid CLI');
+});
+
+test('creditStatus tracks turns, quota hits, and cooldown countdown', async () => {
+  reset({
+    order: ['c1'],
+    backends: {
+      c1: { ...fake('fake-junie.js', 'c1', 'ok', 'junie'), label: 'Test Provider', freeTier: true },
+    },
+  });
+  const { app, registry } = ctx();
+  await app.turn('count turns');
+
+  const status = registry.creditStatus();
+  assert.equal(status.length, 1);
+  assert.equal(status[0].name, 'c1');
+  assert.equal(status[0].label, 'Test Provider');
+  assert.equal(status[0].turns, 1);
+  assert.equal(status[0].state, 'ready');
+  assert.equal(status[0].successRate, '100%');
+});
+
+test('server API provides status, backend credit stats, and strategy updating', async () => {
+  const { createServerInstance } = require('../lib/server');
+  const instance = createServerInstance({ cwd: CWD, home: process.env.RELAY_HOME });
+  const server = instance.server;
+  const { Readable, Writable } = require('stream');
+
+  const dispatchReq = ({ method = 'GET', url = '/', body = null } = {}) =>
+    new Promise((resolve) => {
+      const payload = body ? JSON.stringify(body) : null;
+      let sent = false;
+      const req = new Readable({
+        read() {
+          if (!sent && payload) {
+            this.push(payload);
+            sent = true;
+          }
+          this.push(null);
+        },
+      });
+      req.method = method;
+      req.url = url;
+      req.headers = { host: 'localhost', 'content-type': 'application/json' };
+
+      let chunks = '';
+      const res = new Writable({
+        write(chunk, enc, cb) {
+          chunks += chunk.toString();
+          cb();
+        },
+      });
+      res.setHeader = () => {};
+      res.writeHead = (code) => {
+        res.statusCode = code;
+      };
+      res.end = (finalChunk) => {
+        if (finalChunk) chunks += finalChunk.toString();
+        try {
+          resolve({ status: res.statusCode || 200, data: JSON.parse(chunks) });
+        } catch {
+          resolve({ status: res.statusCode || 200, raw: chunks });
+        }
+      };
+
+      server.emit('request', req, res);
+    });
+
+  const status = await dispatchReq({ url: '/api/status' });
+  assert.equal(status.status, 200);
+  assert.equal(status.data.ok, true);
+  assert.ok(status.data.backends.length > 0);
+
+  const setStrat = await dispatchReq({ method: 'POST', url: '/api/strategy', body: { strategy: 'pool' } });
+  assert.equal(setStrat.status, 200);
+  assert.equal(setStrat.data.ok, true);
+  assert.equal(setStrat.data.strategy, 'pool');
+});
+
+test('parseMultiStepPrompt parses numbered steps with explicit backend & model', async () => {
+  const { parseMultiStepPrompt } = require('../lib/multistep');
+  const input = `
+    1. [@claude/claude-3-7-sonnet] Plan the database architecture
+    2. [@qwen] Write the SQL migration queries
+    3. [@freebuff] Create unit tests for models
+  `;
+  const parsed = parseMultiStepPrompt(input, ['claude', 'qwen', 'freebuff']);
+  assert.equal(parsed.isMultiStep, true);
+  assert.equal(parsed.steps.length, 3);
+  assert.equal(parsed.steps[0].backend, 'claude');
+  assert.equal(parsed.steps[0].model, 'claude-3-7-sonnet');
+  assert.equal(parsed.steps[1].backend, 'qwen');
+  assert.equal(parsed.steps[2].backend, 'freebuff');
+});
+
+test('parseMultiStepPrompt parses delimited blocks with @backend', async () => {
+  const { parseMultiStepPrompt } = require('../lib/multistep');
+  const input = `
+    @claude
+    Design the API contract and endpoints
+    ---
+    @kilo
+    Implement the Express route handlers
+    ---
+    @junie
+    Run verification and test coverage
+  `;
+  const parsed = parseMultiStepPrompt(input);
+  assert.equal(parsed.isMultiStep, true);
+  assert.equal(parsed.type, 'delimited');
+  assert.equal(parsed.steps.length, 3);
+  assert.equal(parsed.steps[0].backend, 'claude');
+  assert.equal(parsed.steps[1].backend, 'kilo');
+  assert.equal(parsed.steps[2].backend, 'junie');
+});
+
+test('parseMultiStepPrompt parses pipeline arrows and auto-assigns roles', async () => {
+  const { parseMultiStepPrompt } = require('../lib/multistep');
+  const arrowInput = '[claude] Plan system -> [qwen] Write code -> [freebuff] Write tests';
+  const parsedArrow = parseMultiStepPrompt(arrowInput);
+  assert.equal(parsedArrow.isMultiStep, true);
+  assert.equal(parsedArrow.type, 'pipeline');
+  assert.equal(parsedArrow.steps.length, 3);
+  assert.equal(parsedArrow.steps[0].backend, 'claude');
+  assert.equal(parsedArrow.steps[1].backend, 'qwen');
+  assert.equal(parsedArrow.steps[2].backend, 'freebuff');
+
+  // Semantic natural language steps
+  const nlInput = `
+    Step 1: Plan and architect the new caching system
+    Step 2: Write the implementation in redis.js
+    Step 3: Test and assert edge case performance
+  `;
+  const parsedNl = parseMultiStepPrompt(nlInput, ['agy', 'kilo', 'freebuff']);
+  assert.equal(parsedNl.isMultiStep, true);
+  assert.equal(parsedNl.steps.length, 3);
+  assert.equal(parsedNl.steps[0].backend, 'agy'); // auto-assigned plan
+  assert.equal(parsedNl.steps[1].backend, 'kilo'); // auto-assigned code
+  assert.equal(parsedNl.steps[2].backend, 'freebuff'); // auto-assigned test
+});
+
+test('app.turn delivers multi-step prompts to different backends sequentially', async () => {
+  reset({
+    order: ['qc', 'jd'],
+    backends: {
+      qc: fake('fake-claude.js', 'qc', 'ok', 'claude'),
+      jd: fake('fake-junie.js', 'jd', 'ok', 'junie'),
+    },
+  });
+  const { app } = ctx();
+
+  const multiPrompt = `
+    1. [@qc] Outline the plan
+    2. [@jd] Implement the feature based on that plan
+  `;
+
+  const stepsVisited = [];
+  const hooks = {
+    onStepStart: ({ stepNumber, backend }) => stepsVisited.push({ stepNumber, backend }),
+  };
+
+  const res = await app.turn(multiPrompt, hooks);
+  assert.equal(res.ok, true);
+  assert.equal(res.isMultiStep, true);
+  assert.equal(res.totalSteps, 2);
+  assert.equal(stepsVisited.length, 2);
+  assert.equal(stepsVisited[0].backend, 'qc');
+  assert.equal(stepsVisited[1].backend, 'jd');
 });
 
 function sessionIdOf(agent) {

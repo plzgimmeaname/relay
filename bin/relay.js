@@ -53,6 +53,11 @@ const HELP = `${c.bold('relay')} ${c.gray(VERSION)} — one session across every
   ${c.bold('relay')} init                 write a starter ${HOME}/config.json
   ${c.bold('relay')} connect <command> [--pty]   probe a CLI and print what relay detected
   ${c.bold('relay')} backends             priority order and credit state
+  ${c.bold('relay')} credits              credit pool, quota health, and usage stats across all CLIs
+  ${c.bold('relay')} scan [--auto]        scan system for AI CLIs (agy, claude, kilo, freebuff, qwen, junie, opencode)
+  ${c.bold('relay')} strategy [name]      routing strategy: priority, pool (round-robin), free-first
+  ${c.bold('relay')} desktop              launch companion desktop app with real-time UI
+  ${c.bold('relay')} serve [--port 4242]  run local API server daemon
   ${c.bold('relay')} sessions [--all]     saved sessions
   ${c.bold('relay')} native [cli] [--all]  history other CLIs kept (claude, qwen, junie)
   ${c.bold('relay')} import <id>          bring one of those sessions into relay
@@ -85,7 +90,11 @@ async function main() {
   if (flags.help) return process.stdout.write(HELP);
 
   const config = loadConfig();
-  fs.mkdirSync(config.home, { recursive: true });
+  try {
+    fs.mkdirSync(config.home, { recursive: true });
+  } catch {
+    /* tolerate restricted sandbox */
+  }
   const registry = new Registry(config.home, config);
   const sub = flags._[0];
 
@@ -101,6 +110,83 @@ async function main() {
     });
     console.log('\n' + table(rows, ['order', 'command', 'dialect', 'state', 'note']) + '\n');
     console.log(c.gray(`  config: ${path.join(config.home, 'config.json')} · state: ${path.join(config.home, 'state.json')}\n`));
+    return;
+  }
+
+  if (sub === 'credits') {
+    const statuses = registry.creditStatus();
+    if (!statuses.length) return console.log(c.yellow('no backends connected — run: relay scan or relay connect <command>'));
+    const rows = statuses.map((s, i) => {
+      const stateColor = s.state === 'ready' ? c.green('● ready') : s.state === 'cooldown' ? c.yellow(`⏳ cooldown (${s.cooldownText})`) : c.red('⛔ out of credits');
+      const tier = s.freeTier ? c.green('FREE') : c.magenta('PAID');
+      return [i === 0 ? c.bold('▸ ' + s.name) : '  ' + s.name, s.label, tier, stateColor, String(s.turns), s.successRate, truncate(s.reason || '', 35)];
+    });
+    console.log(`\n  ${c.bold('Credit Pool & Quota Health')} ${c.gray(`(Strategy: ${c.bold(c.cyan(registry.getStrategy()))})`)}\n`);
+    console.log(table(rows, ['cli', 'provider', 'tier', 'quota state', 'turns', 'success', 'last signal']) + '\n');
+    console.log(c.gray('  relay strategy pool balances turns · relay strategy free-first burns free quotas first\n'));
+    return;
+  }
+
+  if (sub === 'strategy') {
+    const target = flags._[1];
+    if (!target) {
+      console.log(`\nCurrent strategy: ${c.bold(c.cyan(registry.getStrategy()))}\n`);
+      console.log(`  ${c.bold('priority')}   - strictly asks top CLI first, falls over if out of credits`);
+      console.log(`  ${c.bold('pool')}       - round-robin across ready CLIs to balance rate limits`);
+      console.log(`  ${c.bold('free-first')} - burns free quotas (agy, freebuff, kilo, etc.) before paid credits`);
+      console.log(c.gray('\nChange strategy: relay strategy pool · relay strategy free-first · relay strategy priority\n'));
+      return;
+    }
+    try {
+      const s = registry.setStrategy(target.toLowerCase());
+      console.log(c.green(`✓ Routing strategy set to: ${c.bold(s)}\n`));
+    } catch (err) {
+      console.error(c.red(`error: ${err.message}`));
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (sub === 'scan') {
+    const { scanInstalledCLIs, autoConnectAll } = require('../lib/scanner');
+    const auto = flags.auto || flags._.includes('--auto') || flags._.includes('auto');
+    const scanned = scanInstalledCLIs(flags.cwd);
+    const rows = scanned.map((c0) => [
+      c0.installed ? c.green('✓ ' + c0.name) : c.gray('  ' + c0.name),
+      c0.label,
+      c0.freeTier ? c.green('free') : c.magenta('paid'),
+      c0.installed ? c.cyan(c0.path) : c.gray('not found on PATH'),
+      c0.installed ? (registry.all.includes(c0.name) ? c.green('connected') : c.yellow('available')) : c.gray('-'),
+    ]);
+    console.log('\n' + table(rows, ['cli', 'provider', 'tier', 'binary path', 'status']) + '\n');
+    if (auto) {
+      const result = autoConnectAll(config, registry, { note: (msg) => console.log(msg) });
+      console.log(c.green(`\n✓ Auto-connected ${result.added.length} newly found CLI(s): ${result.added.join(', ') || 'none'}\n`));
+    } else {
+      const unadded = scanned.filter((c0) => c0.installed && !registry.all.includes(c0.name));
+      if (unadded.length) {
+        console.log(c.yellow(`  ${unadded.length} installed CLI(s) not yet connected. Run: relay scan --auto to add them all!\n`));
+      } else {
+        console.log(c.gray('  all detected CLIs are connected.\n'));
+      }
+    }
+    return;
+  }
+
+  if (sub === 'serve') {
+    const { createServerInstance } = require('../lib/server');
+    const port = Number(flags.port || flags._[1]) || 4242;
+    const instance = createServerInstance({ cwd: flags.cwd, home: config.home });
+    const info = await instance.listen(port);
+    console.log(c.bold(c.cyan('◆ Relay Server')) + ` listening at ${c.underline(info.url)}`);
+    console.log(c.gray('  Press Ctrl+C to stop.\n'));
+    return;
+  }
+
+  if (sub === 'desktop') {
+    const { launchDesktop } = require('../desktop/launcher');
+    const port = Number(flags.port || flags._[1]) || 4242;
+    await launchDesktop({ port, cwd: flags.cwd });
     return;
   }
 

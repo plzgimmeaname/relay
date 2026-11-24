@@ -5,7 +5,11 @@
   "license": "MIT",
   "bin": { "relay": "bin/relay.js" },
   "main": "lib/app.js",
-  "files": ["bin", "lib", "README.md"],
+  "files": ["bin", "lib", "desktop", "README.md"],
   "engines": { "node": ">=18" },
-  "scripts": { "test": "node test/run.js" }
+  "scripts": {
+    "test": "node test/run.js",
+    "desktop": "node desktop/launcher.js",
+    "serve": "node bin/relay.js serve"
+  }
 }

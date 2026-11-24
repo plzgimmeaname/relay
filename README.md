@@ -1,20 +1,36 @@
 # relay
 
 One session, every coding CLI. `relay` drives the agent CLIs you already have
-(`qwen`, `claude`, `junie`, or anything that answers a prompt on stdout) as one
-continuous conversation: when one runs out of credits, the next one in your
-priority order picks up mid-task with the transcript in hand.
+(`agy` / Antigravity, `claude`, `kilo`, `freebuff`, `qwen`, `junie`, `opencode`) as one
+continuous conversation: when one runs out of credits or hits rate limits, the next one in your
+rotation picks up mid-task with the transcript in hand.
 
 - **Shared transcript** — relay owns the session, not any single CLI. Each CLI
   that already saw the conversation resumes natively; one that joins later gets
   a digest of what happened.
-- **Credit failover** — output is scanned for quota and auth signals. A CLI that
-  runs out is marked, and the turn is replayed on the next one.
+- **Credit failover & pool balancing** — output is scanned for quota and auth signals.
+  Choose between strict priority failover, round-robin credit pooling to prevent single-provider
+  rate limits, or free-tier-first to burn zero-cost quotas before touching paid credits.
+- **Auto-scan discovery** — 1-click detection of installed CLIs (`relay scan --auto`).
+- **Relay Desktop Companion App** — sleek dark desktop application (`relay desktop`) with
+  live credit meters, quota countdowns, interactive chat, and terminal streaming.
+- **22 built-in CLI configs** — agy, claude, kilo, freebuff, qwen, junie, opencode, aider,
+  cursor, copilot, ollama, gemini, openai, goose, cody, openhands, llm, sgpt, mentat, plandex,
+  cline and more. `relay scan --auto` connects whichever are installed.
+- **Multi-step prompts** — one prompt can dispatch agents to different CLIs/models in sequence,
+  each step receiving the previous step's output:
+  ```
+  1. [@claude/sonnet] plan the refactor
+  2. [@qwen] implement it
+  3. [@freebuff] write tests
+  ```
+  Also accepted: `---` separated blocks starting with `@cli[:model]`, and `[claude] ... -> [qwen] ...`
+  pipelines. Untagged steps are auto-assigned by role (plan/code/test/review).
 - **AGENTS.md sync** — the last turns are mirrored into a machine block in
   `AGENTS.md`, so a CLI you start by hand can pick the work up too.
 - **Sessions travel** — resume or reference any saved session, including ones
   recorded in a different directory.
-- **No lock-in** — zero dependencies, one JSON config, easy to add a CLI.
+- **Zero lock-in** — zero dependencies, clean JSON config, easy to add custom CLIs.
 
 ## Install
 
@@ -28,9 +44,10 @@ Requires Node 18+. Nothing is installed into `~/.relay` until you run it.
 
 ```sh
 relay                          # interactive shell
-/connect                       # guided wizard: add any CLI to the rotation
-/priority qwen claude junie    # who gets asked first
-/priority move junie 1         # …or move one into position
+relay desktop                  # launch the desktop companion app
+relay scan --auto              # auto-detect and connect installed CLIs
+relay credits                  # view quota health & credit pool across all CLIs
+relay strategy pool            # balance turns across CLIs to avoid rate limits
 ```
 
 ```sh
@@ -43,41 +60,55 @@ relay sessions --all           # every session, from every directory
 relay connect <command>        # probe a CLI and print what relay detected
 ```
 
-## How a turn travels
+## Supported CLIs Out of the Box
 
-| the CLI…            | relay gives it                                          |
-| ------------------- | ------------------------------------------------------- |
-| already saw this session | its own native session id (`-r`, `--session-id`)   |
-| is new to this session   | a digest of the recent turns, in the prompt          |
-| cannot resume at all     | the digest, every turn                               |
-| speaks no JSON protocol  | project instructions inlined, plain text in and out  |
+| CLI | Provider | Tier | Protocol | Resume Capability |
+| --- | --- | --- | --- | --- |
+| **agy** | Google Antigravity / Gemini | Free | `claude` (stream-json) | Native `--conversation` |
+| **claude** | Anthropic Claude Code | Paid | `claude` (stream-json) | Native `--resume` |
+| **kilo** | Kilo Code | Free | `text` / `pty` | Digest in prompt |
+| **freebuff**| Freebuff AI | Free | `text` / `pty` | Digest in prompt |
+| **qwen** | Qwen Code | Free | `claude` (stream-json) | Native `--resume` |
+| **junie** | JetBrains Junie | Paid | `junie` (json-stream) | Native `--session-id` |
+| **opencode**| OpenCode | Free | `text` / `pty` | Digest in prompt |
 
-Quota and auth failures mark a CLI out of credits (cleared automatically after
-3 hours, or now with `/forget`). Anything else is a soft 10-minute cooldown, and
-the failing output is saved under `~/.relay/probes/` for tuning patterns.
+## Credit Strategies
 
-## Full-screen apps (pseudo-terminal)
+- **`priority`** (default) — strictly asks your favorite CLI first; fails over only when credits expire.
+- **`pool`** — distributes turns round-robin / least-recently-used across all ready CLIs so you never hit hourly or daily limits on any single provider.
+- **`free-first`** — burns free tiers (`agy`, `freebuff`, `kilo`, `qwen`, `opencode`) first, reserving premium credits (`claude`, `junie`) for fallbacks.
 
-Some agents only run as a full-screen terminal UI and have no print or JSON mode. When a plain
-probe shows that, `/connect` offers to drive the app through a pseudo-terminal: relay starts it,
-answers its terminal queries, types the prompt, waits for the screen to settle, and reads the
-reply off an emulated screen (`lib/vt.js`, `lib/ptyrun.js`; needs `python3` for the pty shim).
-
-- Slower and best effort: one app launch per turn, no native resume (the digest is replayed).
-- Per-CLI tuning lives under `pty` in `config.json`: `idleMs`, `minWaitMs`, `startupMs`,
-  `cutBefore` (regex where the footer starts), `drop` (regexes for lines to discard).
-- **Check the app's terms first.** Some apps forbid scripted use and warn or ban accounts.
-  Relay asks before probing, and stops using an app that says it was caught (`blocked`).
+Change anytime via:
+```sh
+relay strategy pool
+# or inside relay TUI:
+/strategy free-first
+```
 
 ## Commands
 
 | inside relay           | does                                                     |
 | ---------------------- | -------------------------------------------------------- |
 | `<prompt>`             | send to the current CLI                                  |
+| `/credits`             | live credit pool health, countdowns, and stats           |
+| `/strategy [name]`     | switch routing: priority, pool, free-first               |
+| `/scan [--auto]`       | scan system for AI CLIs and connect them                 |
 | `/status`              | session, backends, credit state, AGENTS.md               |
 | `/priority [a b c]`    | show or set the failover order                           |
 | `/use <cli>`           | pin a CLI for the following turns                        |
 | `/backends`            | every connected CLI and its state                        |
+| `/connect [command]`   | guided wizard: probe a CLI, pick its protocol, save it    |
+| `/commands [cli]`      | slash commands relay has seen, from all CLIs             |
+| `/run <cli> /cmd`      | run a CLI-native command verbatim on that CLI            |
+| `/sync`                | write the progress block into AGENTS.md                  |
+| `/note <text>`         | pin a durable note into every future prompt              |
+| `/sessions [--all]`    | saved sessions, here or everywhere                       |
+| `/resume [id\|#]`      | continue a saved session                                 |
+| `/ref <id\|#\|name>`   | keep a past session in context (read-only)               |
+| `/refs` · `/unref <id>`| list or drop references                                  |
+| `/retry`               | re-run the last prompt                                   |
+| `/forget [cli\|all]`   | clear credit / cooldown marks                            |
+| `/clear`               | start a fresh session here                               |
 | `/connect [command]`   | guided wizard: probe a CLI, pick its protocol, save it    |
 | `/commands [cli]`      | slash commands relay has seen, from all CLIs             |
 | `/run <cli> /cmd`      | run a CLI-native command verbatim on that CLI            |
