@@ -37,6 +37,12 @@ process.stdin.on('end', () => {
     process.exit(0);
   }
 
+  if (mode === 'planner' && /Split the instructions below/.test(text)) {
+    require('fs').writeFileSync(require('path').join(process.env.FAKE_STATE_DIR, 'planner-argv'), JSON.stringify(process.argv.slice(2)));
+    emit({ type: 'result', is_error: false, subtype: 'success', result: '```json\n' + process.env.FAKE_PLAN + '\n```', session_id: sid });
+    return;
+  }
+
   const reply = `[${name}] ${sawDigest ? 'digest' : 'native'} :: ${text.slice(0, 40)}`;
   emit({ type: 'assistant', session_id: sid, message: { role: 'assistant', content: [{ type: 'thinking', thinking: 'thinking hard' }, { type: 'tool_use', name: 'Read', input: { file_path: '/x/y.ts' } }] } });
   emit({ type: 'assistant', session_id: sid, message: { role: 'assistant', content: [{ type: 'text', text: reply }] } });

@@ -7,7 +7,7 @@ const store = require('../lib/store');
 const { App } = require('../lib/app');
 const { Tui } = require('../lib/tui');
 const { Agent, listAgents, findAgent } = require('../lib/agent');
-const { c, table, truncate } = require('../lib/ui');
+const { c, table, truncate, heading } = require('../lib/ui');
 const log = require('../lib/log');
 
 const VERSION = '0.1.0';
@@ -34,53 +34,121 @@ function parseArgs(argv) {
     else if (a === '--detach' || a === '-d') out.detach = true;
     else if (a === '--attach') out.attach = true;
     else if (a === '--stop') out.stop = true;
+    else if (a === '--dry-run') out.dryRun = true;
+    else if (a === '--offline') out.offline = true;
+    else if (a === '--planner') out.planner = argv[++i];
+    else if (a === '--use') out.use = String(argv[++i] || '').split(',').filter(Boolean);
+    else if (a === '--parallel' || a === '-j') out.parallel = Number(argv[++i]);
+    else if (a === '--file' || a === '-f') out.file = argv[++i];
+    else if (a === '--auto') out.auto = true;
+    else if (a === '--force') out.force = true;
+    else if (a === '--no-export') out.noExport = true;
+    else if (a === '--as') out.as = argv[++i];
     else if (a.startsWith('-') && a.length > 1) throw new Error(`unknown flag: ${a}`);
     else out._.push(a);
   }
   return out;
 }
 
-const HELP = `${c.bold('relay')} ${c.gray(VERSION)} — one session across every coding CLI
+const HELP_SECTIONS = [
+  [
+    'start here',
+    [
+      ['relay', 'interactive shell, continuing your last session here'],
+      ['relay -c', 'continue the most recent session in this directory'],
+      ['relay -r <id|#>', 'resume a saved session, from any directory'],
+      ['relay --new', 'start a fresh session'],
+      ['relay -p "prompt"', 'one shot: print the answer and exit'],
+      ['relay --cwd <dir>', 'run as if started in <dir>'],
+      ['relay -n <name>', 'name the session'],
+      ['relay --yolo', 'let CLIs act without permission prompts'],
+    ],
+  ],
+  [
+    'routing & credits',
+    [
+      ['relay scan [--auto]', 'scan for AI CLIs and connect them'],
+      ['relay credits', 'credit pool, quota health and usage stats'],
+      ['relay strategy [name]', 'priority, pool (round-robin), free-first'],
+      ['relay backends', 'priority order and credit state'],
+      ['relay connect <command>', 'probe a CLI and print what relay detected'],
+      ['relay init', `write a starter ${HOME}/config.json`],
+    ],
+  ],
+  [
+    'sessions & agents',
+    [
+      ['relay sessions [--all]', 'saved sessions'],
+      ['relay native [cli] [--all]', 'history other CLIs kept'],
+      ['relay import <id>', 'bring one of those sessions into relay'],
+      ['relay agents', 'list every agent assignment'],
+      ['relay agent <name> ...', 'run a turn on an agent (--cli, --model, --cwd, --detach)'],
+      ['relay agent <name> --attach', 'interactive TUI pinned to that agent'],
+      ['relay agent <name> --stop', 'drop an agent assignment'],
+      ['relay switch <name>', 'open an agent in the TUI'],
+      ['relay sync', 'refresh the AGENTS.md progress block'],
+    ],
+  ],
+  [
+    'tags & skills',
+    [
+      ['relay @cli[:model] "prompt"', 'ask one CLI or model (also @opus, @haiku)'],
+      ['relay @cli /command [args]', 'any slash command of that CLI, sent as typed'],
+      ['relay @cli <subcommand…>', 'its own subcommands, e.g. relay @claude mcp list'],
+      ['relay @cli [open /command]', 'its own interactive UI, resuming this conversation'],
+      ['relay skill import <path>', 'convert a skill (folder, .md, .toml, .mdc) for every CLI'],
+      ['relay skill list|show|export|remove', 'manage imported skills'],
+      ['relay skill run <name> "request"', 'run one (--cli, --model to choose)'],
+    ],
+  ],
+  [
+    'automation',
+    [
+      ['relay auto "instructions"', 'split into tasks, assign an agent + CLI + model, run them'],
+      ['  --dry-run', 'show the plan only'],
+      ['  --file <path>', 'read instructions from a file'],
+      ['  --planner <cli[:model]>', 'choose the planner'],
+      ['  --offline', 'split locally, no planner call'],
+      ['  --use <cli,cli>', 'limit which CLIs may be used'],
+      ['  --parallel <n>', 'run read-only tasks at once (default 3)'],
+    ],
+  ],
+  [
+    'tools',
+    [
+      ['relay desktop', 'launch the companion desktop app'],
+      ['relay serve [--port 4242]', 'run the local API server daemon'],
+      ['relay commands [cli]', 'every command relay has seen'],
+      ['relay logs [n]', 'recent errors and failovers'],
+    ],
+  ],
+];
 
-  ${c.bold('relay')}                     interactive shell, continuing your last session here
-  ${c.bold('relay')} -c                  continue the most recent session in this directory
-  ${c.bold('relay')} -r <id|#>           resume a saved session, from any directory
-  ${c.bold('relay')} --new                start a fresh session
-  ${c.bold('relay')} -p "prompt"          one shot: print the answer and exit
-  ${c.bold('relay')} --cwd <dir>          run as if started in <dir>
-  ${c.bold('relay')} -n <name>            name the session
-  ${c.bold('relay')} --yolo               let CLIs act without permission prompts
-  ${c.bold('relay')} init                 write a starter ${HOME}/config.json
-  ${c.bold('relay')} connect <command> [--pty]   probe a CLI and print what relay detected
-  ${c.bold('relay')} backends             priority order and credit state
-  ${c.bold('relay')} credits              credit pool, quota health, and usage stats across all CLIs
-  ${c.bold('relay')} scan [--auto]        scan system for AI CLIs (agy, claude, kilo, freebuff, qwen, junie, opencode)
-  ${c.bold('relay')} strategy [name]      routing strategy: priority, pool (round-robin), free-first
-  ${c.bold('relay')} desktop              launch companion desktop app with real-time UI
-  ${c.bold('relay')} serve [--port 4242]  run local API server daemon
-  ${c.bold('relay')} sessions [--all]     saved sessions
-  ${c.bold('relay')} native [cli] [--all]  history other CLIs kept (claude, qwen, junie)
-  ${c.bold('relay')} import <id>          bring one of those sessions into relay
-  ${c.bold('relay')} commands [cli]       every command relay has seen
-  ${c.bold('relay')} logs [n]             last n lines of ${HOME}/relay.log (errors, failovers)
-  ${c.bold('relay')} sync                refresh the AGENTS.md progress block
-  ${c.bold('relay')} agent <name> [--cli <cli>] [--model <model>] [--cwd <dir>] [--detach] "<prompt>"
-                                         designate (create/update) an agent assignment and run a prompt on it in one line
-  ${c.bold('relay')} agents               list every agent assignment (name, cli, model, directory, session)
-  ${c.bold('relay')} agent <name> --stop   stop/drop an agent assignment
-  ${c.bold('relay')} agent <name> --attach start an interactive TUI pinned to that agent (its cli, model, directory)
-  ${c.bold('relay')} switch <name>         start an interactive TUI pinned to that agent
+function helpText() {
+  const out = ['', `${c.bold(c.text('relay'))} ${c.gray(VERSION)}  ${c.gray('one session across every coding CLI')}`, ''];
+  for (const [title, items] of HELP_SECTIONS) {
+    const w = Math.max(...items.map(([k]) => k.length));
+    out.push(heading(title));
+    for (const [k, d] of items) out.push(`  ${c.bold(c.text(k.padEnd(w)))}  ${c.gray(d)}`);
+    out.push('');
+  }
+  out.push(c.gray('  Inside relay, /help lists everything — routing, sessions, agents and tools.'));
+  out.push(c.gray('  When a CLI runs out of credits mid-task, relay replays the turn on the next one in'));
+  out.push(c.gray('  your priority order and imports the transcript. Progress lands in AGENTS.md, so any'));
+  out.push(c.gray('  CLI started by hand can pick the work up.'));
+  out.push('');
+  return out.join('\n');
+}
 
-  Inside relay, /help lists everything. When a CLI runs out of credits mid-task, relay
-  marks it, replays the turn on the next one in your priority order, and imports the
-  transcript. Progress is written to AGENTS.md so any CLI can pick the work up.
-`;
+const HELP = helpText();
 
 async function main() {
   const argv = process.argv.slice(2);
+  // everything after `@cli` belongs to that CLI, so relay must not parse its flags
+  const at = tagIndex(argv);
   let flags;
   try {
-    flags = parseArgs(argv);
+    flags = parseArgs(at < 0 ? argv : argv.slice(0, at));
   } catch (err) {
     process.stderr.write(c.red('relay: ') + err.message + '\n' + c.gray('  relay --help\n'));
     process.exit(2);
@@ -97,6 +165,37 @@ async function main() {
   }
   const registry = new Registry(config.home, config);
   const sub = flags._[0];
+
+  if (at >= 0) return runTagCommand(config, registry, flags, argv[at], argv.slice(at + 1));
+
+  if (sub === 'skill' || sub === 'skills') {
+    const { skillCommand } = require('../lib/skillview');
+    const { reservedNames } = require('../lib/tui');
+    if (flags._[1] === 'run') {
+      const skills = require('../lib/skills');
+      const skill = skills.load(config.home, flags._[2]);
+      if (!skill) {
+        process.stderr.write(c.red(`relay: no skill called "${flags._[2] || ''}" — relay skill list\n`));
+        process.exit(1);
+      }
+      const request = flags._.slice(3).join(' ');
+      const app = openApp(config, registry, flags);
+      const opts = { skipPipeline: true, display: `/${skill.name} ${request}`.trim() };
+      if (flags.backend) {
+        const { routeTo } = require('../lib/tags');
+        Object.assign(opts, routeTo(app, { backend: flags.backend, model: flags.model }));
+      }
+      return printTurn(app, await app.turn(skills.expand(skill, request), {}, opts));
+    }
+    try {
+      const ok = skillCommand(config, flags._.slice(1), flags, (s) => console.log(s), reservedNames());
+      if (!ok) process.exitCode = 1;
+    } catch (err) {
+      process.stderr.write(c.red('relay: ') + err.message + '\n');
+      process.exit(1);
+    }
+    return;
+  }
 
   if (sub === 'init') return console.log(c.green('✓ wrote ') + writeConfig() + '\n' + c.gray('edit order/backends, or just run: relay (then /connect)'));
 
@@ -354,6 +453,38 @@ async function main() {
     return;
   }
 
+  if (sub === 'auto') {
+    let instructions = flags.print || flags._.slice(1).join(' ');
+    if (flags.file) instructions = [fs.readFileSync(path.resolve(flags.cwd, flags.file), 'utf8'), instructions].filter(Boolean).join('\n\n');
+    if (!instructions) instructions = await readStdin();
+    if (!instructions.trim()) {
+      process.stderr.write(c.red('usage: relay auto "instructions"') + c.gray('  (or --file tasks.md, or pipe them in)\n'));
+      process.exit(2);
+    }
+    const latest = flags.newSession ? null : store.latestSession(config.home, flags.cwd);
+    const main = latest ? store.openSession(latest.file) : store.createSession(config.home, flags.cwd, flags.name);
+    const app = new App({ config, registry, session: main, cwd: flags.cwd, ui: {}, opts: { permissionMode: flags.permissionMode, skipPermissions: flags.skipPermissions, timeoutMs: flags.timeoutMs } });
+    const { createControl } = require('../lib/auto');
+    const { runAuto } = require('../lib/autoview');
+    const control = createControl();
+    process.on('SIGINT', () => {
+      if (control.aborted) process.exit(130);
+      control.abort();
+    });
+    // progress goes to stderr so stdout carries only the results
+    const out = await runAuto(app, instructions, {
+      control,
+      dryRun: flags.dryRun,
+      offline: flags.offline,
+      planner: flags.planner,
+      only: flags.use,
+      parallel: flags.parallel,
+      log: (s) => process.stderr.write(s + '\n'),
+      out: (s) => process.stdout.write(s + '\n'),
+    });
+    process.exit(out.aborted ? 130 : out.ok ? 0 : 1);
+  }
+
   let session;
   if (flags.resume && flags.resume !== true) {
     const found = store.findSession(config.home, flags.resume);
@@ -392,6 +523,65 @@ async function main() {
   const tui = new Tui(app, config);
   app.ui = tui;
   tui.start();
+}
+
+// position of `@cli` when it is the first thing that isn't one of relay's own flags
+function tagIndex(argv) {
+  const withValue = new Set(['--cwd', '-C', '--permission-mode', '--timeout']);
+  const bare = new Set(['--yolo', '--dangerously-skip-permissions', '--new']);
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i].startsWith('@') && argv[i].length > 1) return i;
+    if (withValue.has(argv[i])) i += 1;
+    else if (!bare.has(argv[i])) return -1;
+  }
+  return -1;
+}
+
+function openApp(config, registry, flags) {
+  const latest = flags.newSession ? null : store.latestSession(config.home, flags.cwd);
+  const session = latest ? store.openSession(latest.file) : store.createSession(config.home, flags.cwd, flags.name);
+  return new App({ config, registry, session, cwd: flags.cwd, ui: {}, opts: { permissionMode: flags.permissionMode, skipPermissions: flags.skipPermissions, timeoutMs: flags.timeoutMs } });
+}
+
+function printTurn(app, out) {
+  if (out.ok) {
+    process.stdout.write((out.res.text || '') + '\n');
+    app.sync();
+    process.exit(0);
+  }
+  process.stderr.write(c.red(`relay: ${out.res?.kind || out.reason}`) + (out.res?.raw ? `: ${out.res.raw.split('\n').slice(-2).join(' ').slice(0, 300)}` : '') + '\n');
+  process.exit(1);
+}
+
+// `relay @cli …`
+async function runTagCommand(config, registry, flags, tag, rest) {
+  const tags = require('../lib/tags');
+  const { runTagged } = require('../lib/tagview');
+  // terminal subcommands need no relay session, so don't create one for them
+  const probe = { config, registry };
+  const target = tags.resolveTag(probe, tag);
+  if (!target) {
+    process.stderr.write(c.red(`relay: ${tag} is not a connected or installed CLI, or a model relay knows`) + c.gray('\n  relay backends\n'));
+    process.exit(2);
+  }
+  const action = tags.actionForArgv(rest);
+  if (action.kind === 'exec') process.exit(tags.runExec({ ...probe, cwd: flags.cwd }, target.backend, action.args));
+  const app = openApp(config, registry, flags);
+  const ok = await runTagged(app, target, action, {
+    log: (s) => process.stderr.write(s + '\n'),
+    submit: async (text, opts) => {
+      const out = await app.turn(text, {}, opts);
+      if (out.ok) process.stdout.write((out.res.text || '') + '\n');
+      else process.stderr.write(c.red(`relay: ${out.res?.kind || out.reason}\n`));
+      return out.ok;
+    },
+    slash: async (backend, command, model) => {
+      const res = await tags.runSlash(app, backend, command, { model });
+      if (res.ok) process.stdout.write((res.text || '') + '\n');
+      return res;
+    },
+  });
+  process.exitCode = ok ? 0 : 1;
 }
 
 function readStdin() {

@@ -678,6 +678,338 @@ test('app.turn delivers multi-step prompts to different backends sequentially', 
   assert.equal(stepsVisited[1].backend, 'jd');
 });
 
+const auto = require('../lib/auto');
+
+test('auto: local splitter separates tasks, classifies them and orders dependencies', async () => {
+  const tasks = auto.heuristicSplit('fix the crash on startup, add a dark theme to the app, then write tests for both. Also review the auth code for security problems');
+  assert.deepEqual(tasks.map((t) => t.type), ['debug', 'code', 'test', 'review']);
+  assert.deepEqual(tasks[1].dependsOn, [], 'unrelated work does not wait');
+  assert.deepEqual(tasks[2].dependsOn, ['t1', 't2'], 'tests wait for the changes');
+  assert.equal(tasks[3].difficulty, 'hard');
+  assert.equal(tasks[3].writes, false);
+  assert.equal(auto.classify('review the parser and fix what you find'), 'debug', 'a review that fixes must be able to write');
+  assert.equal(auto.heuristicSplit('fix the login bug. It happens on Safari.').length, 1, 'detail stays with its task');
+});
+
+test('auto: local splitter keeps list preambles and never drops items past the cap', async () => {
+  const listed = auto.heuristicSplit('Use pnpm only.\n- add a settings page\n- document the settings page');
+  assert.equal(listed.length, 2);
+  assert.ok(listed.every((t) => t.prompt.startsWith('Use pnpm only.')));
+  const many = auto.heuristicSplit(Array.from({ length: 15 }, (_, i) => `- add widget${i + 1}`).join('\n'));
+  assert.equal(many.length, 12);
+  assert.match(many[11].prompt, /widget15/);
+});
+
+test('auto: planner output is repaired into an ordered, acyclic task list', async () => {
+  const tasks = auto.normalizeTasks([
+    { id: 'b', prompt: 'write tests', type: 'test', dependsOn: ['a', 'ghost', 'b'] },
+    { id: 'a', prompt: 'add the feature', type: 'nonsense', difficulty: 'extreme' },
+  ]);
+  assert.deepEqual(tasks.map((t) => t.prompt), ['add the feature', 'write tests']);
+  assert.deepEqual(tasks[1].dependsOn, ['t1']);
+  assert.equal(tasks[0].type, 'code');
+  assert.equal(tasks[0].difficulty, 'medium');
+  const cycle = auto.normalizeTasks([{ id: 'x', prompt: 'one', dependsOn: ['y'] }, { id: 'y', prompt: 'two', dependsOn: ['x'] }]);
+  assert.deepEqual(cycle.map((t) => t.dependsOn), [[], ['t1']]);
+  assert.equal(auto.normalizeTasks([{ id: 'a' }]), null);
+});
+
+const TIERS = (p) => ({ light: `${p}-small`, standard: `${p}-mid`, heavy: `${p}-big` });
+
+test('auto: a planner splits the work, each task gets an agent, cli and model, and results flow on', async () => {
+  const qa = { ...fake('fake-claude.js', 'qa', 'planner', 'claude'), models: TIERS('qa'), modelFlag: '--model' };
+  qa.env.FAKE_PLAN = JSON.stringify({ tasks: [
+    { id: 't1', title: 'find the bug', prompt: 'investigate the bug', type: 'research', difficulty: 'hard' },
+    { id: 't2', title: 'fix it', prompt: 'fix the bug', type: 'debug', difficulty: 'easy', dependsOn: ['t1'] },
+  ] });
+  reset({ order: ['qa'], backends: { qa } });
+  const { app, session, config } = ctx();
+  const plan = await auto.createPlan(app, 'find and fix the bug');
+  assert.equal(plan.source, 'planner');
+  assert.deepEqual(plan.tasks.map((t) => [t.agent, t.backend, t.model]), [['auto-researcher', 'qa', 'qa-big'], ['auto-debugger', 'qa', 'qa-small']]);
+  const planner = JSON.parse(fs.readFileSync(path.join(root, 'planner-argv'), 'utf8'));
+  assert.equal(planner[planner.indexOf('--permission-mode') + 1], 'default');
+
+  const done = await auto.runPlan(app, plan);
+  assert.equal(done.ok, true);
+  const seen = JSON.parse(fs.readFileSync(path.join(root, 'last-seen'), 'utf8'));
+  assert.equal(seen.argv[seen.argv.indexOf('--model') + 1], 'qa-small', 'the assigned model reaches the CLI by its own flag');
+  assert.match(seen.text, /## Result of t1/);
+  const saved = JSON.parse(fs.readFileSync(path.join(config.home, '.relay', 'agents', 'auto-debugger.json'), 'utf8'));
+  assert.equal(saved.model, 'qa-small');
+  assert.equal(saved.auto, true);
+  assert.equal(store.latestSession(config.home, CWD).sid, session.header.sid, 'relay -c still opens the main session');
+});
+
+test('auto: failover follows the task route and swaps to the next cli\'s own model', async () => {
+  const qc = { ...fake('fake-claude.js', 'qc', 'quota', 'claude'), models: TIERS('qc') };
+  const qb = { ...fake('fake-claude.js', 'qb', 'ok', 'claude'), models: TIERS('qb') };
+  reset({ order: ['qc', 'qb'], backends: { qc, qb } });
+  const { app } = ctx();
+  const plan = await auto.createPlan(app, 'add a button', {}, { offline: true });
+  assert.equal(plan.tasks[0].backend, 'qc');
+  const done = await auto.runPlan(app, plan);
+  assert.equal(done.results[0].backend, 'qb');
+  assert.equal(done.results[0].model, 'qb-mid');
+  const argv = JSON.parse(fs.readFileSync(path.join(root, 'last-seen'), 'utf8')).argv;
+  assert.equal(argv[argv.indexOf('-m') + 1], 'qb-mid');
+});
+
+test('auto: read-only tasks never skip permissions, and a failed task skips only its dependents', async () => {
+  const qb = fake('fake-claude.js', 'qb', 'ok', 'claude');
+  reset({ order: ['qb'], backends: { qb } });
+  const { app } = ctx();
+  app.opts.skipPermissions = true;
+  let plan = await auto.createPlan(app, 'review the parser', {}, { offline: true });
+  await auto.runPlan(app, plan);
+  assert.ok(!JSON.parse(fs.readFileSync(path.join(root, 'last-seen'), 'utf8')).argv.includes('--dangerously-skip-permissions'));
+
+  reset({ order: ['qc'], backends: { qc: LAYOUT.backends.qc } });
+  const broken = ctx();
+  plan = await auto.createPlan(broken.app, '- add a page\n- then style it\n- explain the router', {}, { offline: true });
+  const done = await auto.runPlan(broken.app, plan);
+  assert.equal(done.ok, false);
+  assert.deepEqual(done.results.map((r) => Boolean(r.skipped)), [false, true, false]);
+});
+
+test('auto: writers run alone while read-only tasks run together', async () => {
+  const qb = fake('fake-claude.js', 'qb', 'ok', 'claude');
+  reset({ order: ['qb'], backends: { qb } });
+  const { app } = ctx();
+  const plan = await auto.createPlan(app, '- explain the router\n- explain the store\n- add a page\n- explain the parser', {}, { offline: true });
+  for (const t of plan.tasks) t.dependsOn = [];
+  let live = [];
+  let peak = 0;
+  await auto.runPlan(app, plan, {
+    onTaskStart: (t) => {
+      assert.ok(!live.some((o) => o.writes) && !(t.writes && live.length), 'a writer overlapped another task');
+      live.push(t);
+      peak = Math.max(peak, live.length);
+    },
+    onTaskEnd: (t) => (live = live.filter((o) => o.id !== t.id)),
+  });
+  assert.equal(peak, 2);
+});
+
+const tags = require('../lib/tags');
+const skills = require('../lib/skills');
+const { execFileSync } = require('child_process');
+process.env.RELAY_USER_HOME = path.join(root, 'userhome');
+const CLI = path.join(DIR, '..', 'bin', 'relay.js');
+const lastSeen = () => JSON.parse(fs.readFileSync(path.join(root, 'last-seen'), 'utf8'));
+const put = (rel, body) => {
+  const file = path.join(root, rel);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, body);
+  return file;
+};
+const claudes = (...names) => ({ order: names, backends: Object.fromEntries(names.map((n) => [n, fake('fake-claude.js', n, 'ok', 'claude')])) });
+
+test('tags: cli, cli:model and bare model names resolve, file mentions do not', async () => {
+  const qa = { ...fake('fake-claude.js', 'qa', 'ok', 'claude'), models: { heavy: 'big-1.5' } };
+  reset({ order: ['qa'], backends: { qa } });
+  const { app } = ctx();
+  assert.deepEqual(tags.resolveTag(app, '@qa'), { backend: 'qa', model: null });
+  assert.deepEqual(tags.resolveTag(app, '@qa:vendor/m-2'), { backend: 'qa', model: 'vendor/m-2' });
+  assert.deepEqual(tags.resolveTag(app, '@big-1.5'), { backend: 'qa', model: 'big-1.5' });
+  assert.equal(tags.parseTagLine(app, '@src/app.js explain this'), null);
+  assert.equal(tags.actionFor('/compact keep the plan').kind, 'slash');
+  assert.equal(tags.actionFor('/Users/me/x.ts is broken').kind, 'prompt');
+  assert.equal(tags.actionFor('open the file and fix it').kind, 'prompt');
+  assert.deepEqual(tags.actionFor('open /model'), { kind: 'open', prompt: '/model' });
+  assert.deepEqual(tags.actionFor('!mcp add "my server"').args, ['mcp', 'add', 'my server']);
+  assert.equal(tags.actionFor('').kind, 'open');
+  assert.deepEqual(tags.actionForArgv(['mcp', 'list', '--json']), { kind: 'exec', args: ['mcp', 'list', '--json'] });
+  assert.equal(tags.actionForArgv(['explain this repo']).kind, 'prompt');
+  assert.equal(tags.actionForArgv(['/cost']).kind, 'slash');
+});
+
+test('tags: a slash command reaches the cli exactly as typed, even without a system flag', async () => {
+  const qa = fake('fake-claude.js', 'qa', 'ok', 'claude');
+  qa.protocol = { systemArgs: [] };
+  reset({ order: ['qa'], backends: { qa } });
+  const { app } = ctx();
+  const res = await tags.runSlash(app, 'qa', '/compact keep the plan', { model: 'm-1' });
+  assert.equal(res.ok, true);
+  assert.equal(lastSeen().text, '/compact keep the plan');
+  assert.equal(lastSeen().argv[lastSeen().argv.indexOf('-m') + 1], 'm-1');
+});
+
+test('tags: a direct command never fails over to another cli', async () => {
+  reset({ order: ['qc', 'qb'], backends: { qc: LAYOUT.backends.qc, qb: fake('fake-claude.js', 'qb', 'ok', 'claude') } });
+  fs.rmSync(path.join(root, 'last-seen'), { force: true });
+  const { app } = ctx();
+  assert.equal((await tags.runSlash(app, 'qc', '/usage')).ok, false);
+  const out = await app.turn('hello', {}, tags.routeTo(app, { backend: 'qc' }));
+  assert.equal(out.ok, false);
+  assert.equal(fs.existsSync(path.join(root, 'last-seen')), false, 'qb must not have been asked');
+});
+
+test('tags: a tagged prompt leaves the current cli as it was', async () => {
+  reset(claudes('qa', 'qb'));
+  const { app } = ctx();
+  await app.turn('start');
+  const out = await tags.keepingPin(app, () => app.turn('just this one', {}, tags.routeTo(app, { backend: 'qb', model: 'm-9' })));
+  assert.equal(out.backend, 'qb');
+  assert.equal(app.backendName, 'qa');
+});
+
+test('tags: relay @cli passes subcommands and their flags straight through', async () => {
+  const echo = put('echo-args.js', 'console.log(JSON.stringify(process.argv.slice(2)))');
+  reset({ order: ['ec'], backends: { ec: { command: process.execPath, baseArgs: [echo], dialect: 'text' } } });
+  const out = execFileSync(process.execPath, [CLI, '@ec', 'mcp', 'list', '--json', '-x'], { cwd: CWD, env: process.env, encoding: 'utf8' });
+  assert.deepEqual(JSON.parse(out), ['mcp', 'list', '--json', '-x']);
+});
+
+test('skills: folders, commands, toml and cursor rules all convert to one shape', async () => {
+  reset();
+  const { config } = ctx();
+  put('src/Deep Review/SKILL.md', '---\nname: deep-review\ndescription: >\n  Review code\n  carefully\nallowed-tools: Bash\n---\nRead ${CLAUDE_SKILL_DIR}/list.txt\n');
+  put('src/Deep Review/list.txt', 'items');
+  put('secret.txt', 'private');
+  fs.symlinkSync(path.join(root, 'secret.txt'), path.join(root, 'src/Deep Review/link.txt'));
+  const [folder] = skills.importSkills(config.home, path.join(root, 'src/Deep Review')).imported;
+  assert.equal(folder.name, 'deep-review');
+  assert.equal(folder.description, 'Review code carefully');
+  assert.ok(fs.existsSync(path.join(folder.dir, 'list.txt')));
+  assert.equal(fs.existsSync(path.join(folder.dir, 'link.txt')), false, 'links are never followed');
+  assert.match(folder.notes.join(' '), /allowed-tools.*symbolic links/s);
+  assert.ok(skills.expand(folder, 'x').includes(`${folder.dir}/list.txt`));
+
+  const [command] = skills.importSkills(config.home, put('src/fix-issue.md', '# Fix\nFix issue $1. Details: $ARGUMENTS\n')).imported;
+  assert.match(skills.expand(command, '42 now'), /Fix issue 42\. Details: 42 now/);
+  const [toml] = skills.importSkills(config.home, put('src/explain.toml', 'description = "Explain it"\nprompt = """\nExplain {{args}} simply.\n"""\n')).imported;
+  assert.match(skills.expand(toml, 'the router'), /Explain the router simply/);
+  const [rule] = skills.importSkills(config.home, put('src/style.mdc', '---\ndescription: House style\nglobs: "*.ts"\n---\nUse tabs. Cost is $1.\n')).imported;
+  assert.match(skills.expand(rule), /Cost is \$1/, 'only commands treat $1 as an argument');
+
+  assert.throws(() => skills.importSkills(config.home, put('other/explain.md', 'different')), /already exists/);
+  assert.throws(() => skills.importSkills(config.home, put('src/data.json', '{}')), /can't convert/);
+  assert.equal(skills.load(config.home, '../..'), null);
+});
+
+test('skills: export covers each cli folder, and never touches skills relay did not write', async () => {
+  reset();
+  const { config } = ctx();
+  skills.importSkills(config.home, path.dirname(put('exp/tidy/SKILL.md', '---\nname: tidy\ndescription: Tidy up\n---\nTidy.\n')));
+  const mine = put('userhome/.junie/skills/tidy/SKILL.md', 'my own');
+  const out = skills.exportSkill(config.home, 'tidy', ['claude', 'qwen', 'junie']);
+  assert.equal(out.written.length, 2);
+  assert.equal(out.skipped.length, 1);
+  assert.equal(fs.readFileSync(mine, 'utf8'), 'my own');
+  assert.ok(fs.existsSync(path.join(root, 'userhome/.agents/skills/tidy/SKILL.md')));
+  assert.equal(skills.exportSkill(config.home, 'tidy', ['claude']).written.length, 1, 're-export replaces its own copy');
+  assert.equal(skills.remove(config.home, 'tidy').removed.length, 2);
+  assert.equal(fs.readFileSync(mine, 'utf8'), 'my own');
+});
+
+test('skills: every cli is told what skills exist, and /name runs one in the shell', async () => {
+  fs.rmSync(path.join(process.env.RELAY_HOME, 'skills'), { recursive: true, force: true });
+  reset(claudes('qa'));
+  const { app, config } = ctx();
+  skills.importSkills(config.home, path.dirname(put('idx/haiku/SKILL.md', '---\nname: haiku\ndescription: Write a haiku\n---\n1. count syllables\n2. write about $ARGUMENTS\n')));
+  assert.match(app.systemPrompt('qa'), /Relay skills[\s\S]*haiku: Write a haiku/);
+
+  const dir = path.join(root, 'shellproj');
+  fs.mkdirSync(dir, { recursive: true });
+  const shell = (line) => execFileSync(process.execPath, [CLI], { cwd: dir, input: `${line}\n/quit\n`, env: process.env, encoding: 'utf8' });
+  shell('/haiku the sea');
+  assert.match(lastSeen().text, /<skill name="haiku">[\s\S]*write about the sea/);
+  assert.doesNotMatch(lastSeen().text, /Multi-Step Workflow/, 'numbered steps in a skill are not a pipeline');
+  shell('@qa /haiku rain');
+  assert.match(lastSeen().text, /write about rain/);
+  shell('@qa /status');
+  assert.ok(lastSeen().text.endsWith('/status'), 'a command that is not a skill goes to the cli');
+  const entries = store.openSession(store.latestSession(config.home, fs.realpathSync(dir)).file).entries;
+  assert.ok(entries.some((e) => e.kind === 'user' && e.text === '/haiku the sea'), 'the transcript keeps the short form');
+});
+
+test('desktop app: tags, skills and /auto work there just as in the terminal', async () => {
+  fs.rmSync(path.join(process.env.RELAY_HOME, 'skills'), { recursive: true, force: true });
+  reset(claudes('qa', 'qb'));
+  const { config } = ctx();
+  skills.importSkills(config.home, path.dirname(put('web/rhyme/SKILL.md', '---\nname: rhyme\ndescription: Rhyme it\n---\nRhyme about $ARGUMENTS\n')));
+  const { createServerInstance } = require('../lib/server');
+  const dir = path.join(root, 'webproj');
+  fs.mkdirSync(dir, { recursive: true });
+  const web = createServerInstance({ cwd: dir });
+  const { url } = await web.listen(0);
+  const send = async (prompt) => (await fetch(`${url}/api/prompt`, { method: 'POST', body: JSON.stringify({ prompt }) })).text();
+  try {
+    await send('@qb hello there');
+    assert.equal(lastSeen().name, 'qb');
+    await send('@qb /usage');
+    assert.equal(lastSeen().text, '/usage');
+    await send('/rhyme cats');
+    assert.match(lastSeen().text, /Rhyme about cats/);
+    assert.match(await send('/skill list'), /\/rhyme/);
+    assert.match(await send('/auto --offline --dry-run add a page'), /Auto plan[\s\S]*auto-coder/);
+    fs.rmSync(path.join(root, 'last-seen'), { force: true });
+    assert.match(await send('@qa !mcp list'), /needs a terminal/);
+    assert.match(await send('/skill remove rhyme'), /in a terminal/);
+    assert.match(await send('/nonsense'), /isn't available/);
+    assert.equal(fs.existsSync(path.join(root, 'last-seen')), false, 'none of those reach a CLI');
+    assert.ok(skills.load(config.home, 'rhyme'));
+  } finally {
+    await web.close();
+  }
+});
+
+test('desktop server refuses other websites and rebound host names', async () => {
+  reset(claudes('qa'));
+  const { createServerInstance } = require('../lib/server');
+  const web = createServerInstance({ cwd: CWD });
+  const { port } = await web.listen(0);
+  const status = (headers) =>
+    new Promise((resolve, reject) => {
+      require('http').get({ host: '127.0.0.1', port, path: '/api/status', headers }, (res) => {
+        res.resume();
+        resolve(res.statusCode);
+      }).on('error', reject);
+    });
+  try {
+    assert.equal(await status({}), 200);
+    assert.equal(await status({ origin: `http://127.0.0.1:${port}` }), 200);
+    assert.equal(await status({ origin: 'https://example.com' }), 403);
+    assert.equal(await status({ host: `attacker.example:${port}` }), 403);
+  } finally {
+    await web.close();
+  }
+});
+
+test('scan keeps each cli\'s launch arguments, and text clis get no stream-json flags', async () => {
+  reset();
+  const config = loadConfig();
+  assert.deepEqual(config.backends.qc.protocol.args.includes('stream-json'), true);
+  fs.writeFileSync(path.join(process.env.RELAY_HOME, 'config.json'), JSON.stringify({ order: ['ollama', 'goose'], backends: { ollama: {}, goose: {} } }));
+  for (const name of ['ollama', 'goose']) {
+    const def = loadConfig().backends[name];
+    assert.deepEqual(def.protocol.args, []);
+    assert.deepEqual(def.prefixArgs, ['run']);
+  }
+  reset({ order: ['jd'], backends: { jd: LAYOUT.backends.jd } });
+  const scanner = require('../lib/scanner');
+  // stand-in binaries only, so the result doesn't depend on what this machine has installed
+  for (const name of ['ollama', 'goose']) fs.chmodSync(put(`scanbin/${name}`, '#!/bin/sh\necho 1.0\n'), 0o755);
+  const realPath = process.env.PATH;
+  const realDirs = scanner.COMMON_DIRS.splice(0);
+  process.env.PATH = `${path.join(root, 'scanbin')}:/usr/bin:/bin`;
+  try {
+    const cfg = loadConfig();
+    const added = scanner.autoConnectAll(cfg, new Registry(cfg.home, cfg)).added;
+    assert.ok(added.includes('ollama') && added.includes('goose'), added.join());
+  } finally {
+    process.env.PATH = realPath;
+    scanner.COMMON_DIRS.push(...realDirs);
+  }
+  const reopened = loadConfig();
+  for (const name of ['ollama', 'goose']) {
+    assert.deepEqual(reopened.backends[name].prefixArgs, ['run'], name);
+    assert.deepEqual(reopened.backends[name].protocol.args, [], name);
+    assert.ok(reopened.backends[name].quota.every((q) => q instanceof RegExp), name);
+  }
+});
+
 function sessionIdOf(agent) {
   return agent.session && agent.session.header.sid;
 }

@@ -3,22 +3,43 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Relay — Multi-CLI AI Orchestrator</title>
+  <title>Relay</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
 </head>
-<body class="dark-theme">
+<body>
+  <!-- SVG icon sprite -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+      <symbol id="i-zap" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+      <symbol id="i-repeat" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
+      <symbol id="i-gift" viewBox="0 0 24 24"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+      <symbol id="i-reset" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="1.5"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+      <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    </defs>
+  </svg>
+
   <div id="app" class="app-container">
     <!-- Top Navigation Header -->
     <header class="app-header">
       <div class="header-left">
         <div class="brand">
           <span class="brand-icon">◆</span>
-          <span class="brand-title">RELAY</span>
-          <span class="brand-badge">DESKTOP</span>
+          <span class="brand-title">Relay</span>
         </div>
         <div class="cwd-badge" id="cwdBadge" title="Working directory">
-          <span class="icon">📁</span>
+          <span class="icon"><svg class="ic"><use href="#i-folder"/></svg></span>
           <span class="cwd-text" id="cwdText">...</span>
         </div>
       </div>
@@ -26,16 +47,16 @@
       <div class="header-center">
         <!-- Routing Strategy Selector -->
         <div class="strategy-selector-container">
-          <span class="strategy-label">Credit Strategy:</span>
+          <span class="strategy-label">Strategy</span>
           <div class="strategy-pills" id="strategyPills">
             <button class="pill-btn active" data-strategy="priority" title="Strict priority order: ask first choice, fallback down list">
-              <span class="pill-icon">⚡</span> Priority
+              <svg class="ic ic-sm"><use href="#i-zap"/></svg> Priority
             </button>
             <button class="pill-btn" data-strategy="pool" title="Round-robin pool: balances turns evenly to prevent rate limits">
-              <span class="pill-icon">🔄</span> Credit Pool
+              <svg class="ic ic-sm"><use href="#i-repeat"/></svg> Credit Pool
             </button>
             <button class="pill-btn" data-strategy="free-first" title="Free tiers first: burns free quotas before touching paid credits">
-              <span class="pill-icon">🎁</span> Free First
+              <svg class="ic ic-sm"><use href="#i-gift"/></svg> Free First
             </button>
           </div>
         </div>
@@ -43,31 +64,29 @@
 
       <div class="header-right">
         <button id="btnScan" class="action-btn scan-btn" title="Scan system for installed AI CLIs">
-          <span class="btn-icon">🔍</span> Auto-Scan CLIs
+          <svg class="ic ic-sm"><use href="#i-search"/></svg> Scan
         </button>
-        <button id="btnResetQuota" class="action-btn reset-btn" title="Clear all quota & cooldown locks">
-          <span class="btn-icon">↺</span> Reset Limits
+        <button id="btnResetQuota" class="action-btn reset-btn" title="Clear all quota and cooldown locks">
+          <svg class="ic ic-sm"><use href="#i-reset"/></svg> Reset limits
         </button>
         <button id="btnNewSession" class="action-btn primary-btn" title="Start fresh session">
-          <span class="btn-icon">+</span> New Session
+          <svg class="ic ic-sm"><use href="#i-plus"/></svg> New session
         </button>
       </div>
     </header>
 
-    <!-- Credit & Quota Health Command Center -->
+    <!-- Backend Health Command Center -->
     <section class="credit-bar-section">
       <div class="section-title-row">
         <div class="section-title">
-          <span class="title-icon">💳</span> Credit Pool & Quota Health
-          <span class="subtitle">Unified pool across Antigravity, Claude, Kilo, Freebuff, Qwen, Junie & OpenCode</span>
+          Backends
+          <span class="subtitle">Unified credit pool across connected CLIs</span>
         </div>
         <div class="credit-stats-summary" id="creditSummary">
           Loading backends...
         </div>
       </div>
-      <div class="backend-cards-scroll" id="backendCardsContainer">
-        <!-- Backend cards injected here dynamically -->
-      </div>
+      <div class="backend-cards-scroll" id="backendCardsContainer"></div>
     </section>
 
     <!-- Main Workspace -->
@@ -84,8 +103,8 @@
           <!-- Sessions List Panel -->
           <div class="tab-panel active" id="tabSessions">
             <div class="sessions-header">
-              <span>Saved Sessions</span>
-              <button class="icon-btn" id="btnRefreshSessions" title="Refresh">↻</button>
+              <span>Saved sessions</span>
+              <button class="icon-btn" id="btnRefreshSessions" title="Refresh"><svg class="ic"><use href="#i-refresh"/></svg></button>
             </div>
             <div class="session-list" id="sessionList">
               <div class="loading-placeholder">Loading sessions...</div>
@@ -95,8 +114,8 @@
           <!-- AGENTS.md Sync Panel -->
           <div class="tab-panel" id="tabAgents">
             <div class="agents-header">
-              <span>AGENTS.md Progress Sync</span>
-              <button class="btn-sync" id="btnSyncAgents">Sync Now</button>
+              <span>AGENTS.md sync</span>
+              <button class="btn-sync" id="btnSyncAgents">Sync now</button>
             </div>
             <pre class="agents-preview" id="agentsPreview">Reading AGENTS.md block...</pre>
           </div>
@@ -104,8 +123,8 @@
           <!-- Logs Panel -->
           <div class="tab-panel" id="tabLogs">
             <div class="logs-header">
-              <span>Relay Engine Logs</span>
-              <button class="icon-btn" id="btnRefreshLogs" title="Refresh logs">↻</button>
+              <span>Engine logs</span>
+              <button class="icon-btn" id="btnRefreshLogs" title="Refresh logs"><svg class="ic"><use href="#i-refresh"/></svg></button>
             </div>
             <div class="logs-container" id="logsContainer"></div>
           </div>
@@ -114,20 +133,19 @@
 
       <!-- Center Chat & Stream Area -->
       <section class="chat-area">
-        <!-- View Toggle & Session Title Header -->
         <div class="chat-header">
           <div class="session-info">
-            <span class="session-tag">SESSION:</span>
+            <span class="session-tag">Session</span>
             <span class="session-id" id="currentSessionId">...</span>
             <span class="active-backend-tag" id="activeBackendTag">Auto</span>
           </div>
 
           <div class="view-mode-toggle">
             <button class="view-mode-btn active" data-mode="chat">
-              <span>💬</span> Interactive Chat
+              <svg class="ic ic-sm"><use href="#i-chat"/></svg> Chat
             </button>
             <button class="view-mode-btn" data-mode="terminal">
-              <span>📟</span> Raw Terminal Stream
+              <svg class="ic ic-sm"><use href="#i-terminal"/></svg> Terminal
             </button>
           </div>
         </div>
@@ -136,12 +154,12 @@
         <div class="messages-container" id="messagesContainer">
           <div class="welcome-banner" id="welcomeBanner">
             <div class="welcome-icon">◆</div>
-            <h2>Relay AI Orchestrator</h2>
-            <p>One unified conversation across all your coding CLIs with automatic credit failover.</p>
+            <h2>Relay</h2>
+            <p>One conversation across all your coding CLIs, with automatic credit failover.</p>
             <div class="quick-chips">
-              <button class="chip" data-prompt="explain this project and architecture">"explain this project and architecture"</button>
-              <button class="chip" data-prompt="check git status and recent commits">"check git status and recent commits"</button>
-              <button class="chip" data-prompt="review tests and test coverage">"review tests and test coverage"</button>
+              <button class="chip" data-prompt="explain this project and architecture">explain this project and architecture</button>
+              <button class="chip" data-prompt="check git status and recent commits">check git status and recent commits</button>
+              <button class="chip" data-prompt="review tests and test coverage">review tests and test coverage</button>
             </div>
           </div>
         </div>
@@ -149,23 +167,24 @@
         <!-- Terminal Stream Container (Hidden by default) -->
         <div class="terminal-container" id="terminalContainer" style="display: none;">
           <div class="terminal-output" id="terminalOutput">
-            <div class="term-line info">[Relay Engine] Initialized and waiting for turns...</div>
+            <div class="term-line info">[relay] Initialized and waiting for turns...</div>
           </div>
         </div>
 
         <!-- Failover / Event Notification Banner -->
         <div class="failover-toast" id="failoverToast" style="display: none;">
           <div class="toast-content">
-            <span class="toast-icon">⚡</span>
+            <span class="toast-icon"><svg class="ic"><use href="#i-alert"/></svg></span>
             <span class="toast-text" id="failoverText">Failover triggered</span>
           </div>
         </div>
 
         <!-- Input Dock Area -->
         <div class="input-dock">
-          <!-- Quick Slash Command Suggestions -->
           <div class="quick-commands-bar" id="quickCommandsBar">
             <span class="quick-title">Quick commands:</span>
+            <button class="quick-cmd" data-cmd="/auto ">/auto</button>
+            <button class="quick-cmd" data-cmd="/skill list">/skill list</button>
             <button class="quick-cmd" data-cmd="/credits">/credits</button>
             <button class="quick-cmd" data-cmd="/scan">/scan</button>
             <button class="quick-cmd" data-cmd="/strategy pool">/strategy pool</button>
@@ -178,24 +197,22 @@
 
           <div class="prompt-box-wrapper">
             <div class="prompt-tools">
-              <select id="backendPinSelect" class="backend-select" title="Pin specific CLI or let Relay choose based on strategy">
-                <option value="">⚡ Auto (Relay Strategy)</option>
-              </select>
+              <select id="backendPinSelect" class="backend-select" title="Pin a specific CLI or let Relay choose based on strategy"></select>
             </div>
 
             <textarea
               id="promptInput"
               class="prompt-textarea"
-              placeholder="Ask anything or run slash commands... (Press Enter to send, Shift+Enter for newline)"
+              placeholder="Ask anything, tag @cli, run a /skill, or /auto a list of tasks..."
               rows="2"
             ></textarea>
 
             <div class="prompt-actions">
               <button id="btnAbort" class="abort-btn" style="display: none;" title="Stop execution">
-                <span>■</span> Stop
+                <svg class="ic"><use href="#i-stop"/></svg>
               </button>
-              <button id="btnSend" class="send-btn" title="Send prompt (Enter)">
-                <span class="send-arrow">➔</span>
+              <button id="btnSend" class="send-btn" title="Send (Enter)">
+                <svg class="ic"><use href="#i-send"/></svg>
               </button>
             </div>
           </div>
@@ -203,7 +220,7 @@
           <div class="input-status-bar">
             <span class="status-indicator ready" id="statusDot"></span>
             <span class="status-text" id="statusText">Ready</span>
-            <span class="tip-text">Pro-tip: Switching strategies or pooling distributes requests to avoid credit depletion.</span>
+            <span class="tip-text">Enter to send · Shift+Enter for a newline</span>
           </div>
         </div>
       </section>
@@ -213,18 +230,18 @@
     <div class="modal-backdrop" id="scanModal" style="display: none;">
       <div class="modal-card">
         <div class="modal-header">
-          <h3>🔍 Auto-Scan AI CLIs</h3>
-          <button class="modal-close" id="btnCloseScanModal">✕</button>
+          <h3>Auto-scan AI CLIs</h3>
+          <button class="modal-close" id="btnCloseScanModal" title="Close"><svg class="ic"><use href="#i-x"/></svg></button>
         </div>
         <div class="modal-body">
-          <p class="modal-desc">Scanning system PATH for Antigravity, Claude Code, Kilo, Freebuff, Qwen, Junie, and OpenCode...</p>
+          <p class="modal-desc">Scanning system PATH for installed AI coding CLIs...</p>
           <div class="scan-results-list" id="scanResultsList">
             <div class="loading-spinner">Scanning...</div>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn secondary" id="btnCancelScan">Close</button>
-          <button class="btn primary" id="btnAutoConnectAll">Auto-Connect All Found</button>
+          <button class="btn primary" id="btnAutoConnectAll">Auto-connect all found</button>
         </div>
       </div>
     </div>

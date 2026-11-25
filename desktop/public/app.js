@@ -51,15 +51,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');
   if (view === 'scan') {
-    setTimeout(openScanModal, 150);
+    openScanModal();
   } else if (view === 'terminal') {
-    setTimeout(() => {
-      document.querySelector('.view-mode-btn[data-mode="terminal"]')?.click();
-    }, 100);
+    document.querySelector('.view-mode-btn[data-mode="terminal"]')?.click();
   } else if (view === 'failover') {
-    setTimeout(() => {
-      showToast('⚠️ Qwen rate-limited (HTTP 429) → Automatically failing over to Freebuff with transcript digest...');
-    }, 100);
+    elFailoverText.textContent = 'Qwen rate-limited (HTTP 429). Failing over to Freebuff with transcript digest...';
+    elFailoverToast.style.display = 'block';
   }
 });
 
@@ -100,7 +97,11 @@ function setupEventListeners() {
   // Quick Commands
   document.querySelectorAll('.quick-cmd').forEach((b) => {
     b.addEventListener('click', () => {
-      handleQuickCommand(b.dataset.cmd);
+      if (APP_COMMANDS.includes(b.dataset.cmd.split(/\s+/)[0]) || b.dataset.cmd.endsWith(' ')) handleQuickCommand(b.dataset.cmd);
+      else {
+        elPromptInput.value = b.dataset.cmd;
+        sendPrompt();
+      }
     });
   });
 
@@ -196,10 +197,10 @@ function updateStrategyPills(activeStrategy) {
 
 function updateBackendPinOptions(backends) {
   const currentVal = elBackendPinSelect.value;
-  let html = '<option value="">⚡ Auto (Relay Strategy)</option>';
+  let html = '<option value="">Auto (relay strategy)</option>';
   for (const b of backends) {
-    const stateTag = b.state === 'ready' ? '● Ready' : b.state === 'cooldown' ? '⏳ Cooldown' : '⛔ Depleted';
-    html += `<option value="${b.name}">${b.label || b.name} (${stateTag})</option>`;
+    const stateTag = b.state === 'ready' ? 'ready' : b.state === 'cooldown' ? 'cooldown' : 'depleted';
+    html += `<option value="${b.name}">${b.label || b.name} · ${stateTag}</option>`;
   }
   elBackendPinSelect.innerHTML = html;
   elBackendPinSelect.value = currentVal;
@@ -207,7 +208,7 @@ function updateBackendPinOptions(backends) {
 
 function renderCreditCards(backends, activeBackend) {
   if (!backends || !backends.length) {
-    elBackendCards.innerHTML = '<div style="color: #64748b; font-size: 12px; padding: 10px;">No CLIs connected yet. Click Auto-Scan to detect them.</div>';
+    elBackendCards.innerHTML = '<div class="loading-placeholder">No CLIs connected yet. Run Scan to detect them.</div>';
     elCreditSummary.textContent = '0 connected';
     return;
   }
@@ -294,7 +295,7 @@ async function resetAllLimits() {
     });
     const data = await res.json();
     if (data.ok) {
-      showToast('✓ Cleared all quota and cooldown marks!');
+      showToast('Cleared all quota and cooldown marks.');
       loadStatus();
     }
   } catch (err) {
@@ -336,7 +337,7 @@ function renderScanResults(scanned) {
           <p>${c.path && c.path !== 'not found on PATH' ? c.path : 'Binary not found in PATH'}</p>
         </div>
         <span class="scan-status-badge ${c.installed ? 'found' : 'missing'}">
-          ${c.installed ? '✓ Installed' : 'Not Found'}
+          ${c.installed ? '<svg class="ic ic-sm"><use href="#i-check"/></svg> Installed' : 'Not found'}
         </span>
       </div>
     `;
@@ -355,7 +356,7 @@ async function performAutoConnect() {
     const data = await res.json();
     if (data.ok) {
       elScanModal.style.display = 'none';
-      showToast(`✓ Auto-connected ${data.autoConnect.added.length} new CLIs!`);
+      showToast(`Auto-connected ${data.autoConnect.added.length} new CLIs.`);
       loadStatus();
     }
   } catch (err) {
@@ -363,13 +364,15 @@ async function performAutoConnect() {
   }
 }
 
+const APP_COMMANDS = ['/scan', '/strategy', '/forget', '/sync', '/credits', '/status', '/backends'];
+
 // Prompt Submission via SSE Stream
 async function sendPrompt() {
   const prompt = elPromptInput.value.trim();
   if (!prompt || isBusy) return;
 
-  // Check if slash command
-  if (prompt.startsWith('/')) {
+  // the app handles its own view commands; skills, /auto, @tags and the rest go to relay
+  if (APP_COMMANDS.includes(prompt.split(/\s+/)[0])) {
     handleQuickCommand(prompt);
     elPromptInput.value = '';
     return;
@@ -449,9 +452,9 @@ function handleSseEvent(type, data, botEl) {
       return `<span class="pipeline-step ${idx === 0 ? 'active' : ''}" data-step="${s.stepNumber}">
         ${s.stepNumber}. ${s.title}: <b>${tag}</b>
       </span>`;
-    }).join(' <span class="pipeline-arrow">➔</span> ');
+    }).join(' <span class="pipeline-arrow">→</span> ');
     stepper.innerHTML = `
-      <div class="pipeline-title">⚡ Multi-Agent Pipeline (${data.totalSteps} Stages)</div>
+      <div class="pipeline-title">Multi-agent pipeline · ${data.totalSteps} stages</div>
       <div class="pipeline-steps">${stepsHtml}</div>
     `;
     authorTag.textContent = 'Multi-Agent';
@@ -485,11 +488,12 @@ function handleSseEvent(type, data, botEl) {
         el.className = 'pipeline-step completed';
       });
     }
-    showToast(`✓ Multi-stage pipeline complete! (${data.totalSteps} stages)`);
+    showToast(`Multi-stage pipeline complete (${data.totalSteps} stages).`);
     appendTerminalLine(`[Multi-Step Pipeline] All ${data.totalSteps} stages completed`);
   } else if (type === 'cli_event') {
     const evt = data.event;
     if (evt.type === 'assistant_text') {
+      if (data.backend === 'relay') textBody.classList.add('columns');
       textBody.innerHTML += escapeHtml(evt.text);
       appendTerminalLine(evt.text, 'stream');
       scrollToBottom();
@@ -504,18 +508,24 @@ function handleSseEvent(type, data, botEl) {
     } else if (evt.type === 'tool_use') {
       const toolBox = document.createElement('div');
       toolBox.className = 'tool-box';
-      toolBox.textContent = `🔧 Tool: ${evt.name} ${JSON.stringify(evt.input || '')}`;
+      toolBox.innerHTML = `<svg class="ic ic-sm"><use href="#i-tool"/></svg> Tool · ${escapeHtml(evt.name)} ${escapeHtml(JSON.stringify(evt.input || ''))}`;
       botEl.querySelector('.msg-bubble').insertBefore(toolBox, textBody);
       appendTerminalLine(`[Tool Call] ${evt.name}`);
     }
   } else if (type === 'failover') {
-    showToast(`⚡ ${data.from} rate-limited → Failing over to ${data.next || 'next in pool'}...`);
+    showToast(`${data.from} rate-limited → failing over to ${data.next || 'next in pool'}...`);
     appendTerminalLine(`[Failover] ${data.from} quota exceeded -> Switching to ${data.next}`, 'warn');
   } else if (type === 'turn_end') {
     if (!textBody.innerHTML && data.text) {
       textBody.innerHTML = escapeHtml(data.text);
     }
-    appendTerminalLine(`[Turn End] Finished with ${data.backend}`);
+    if (!textBody.innerHTML && !data.ok) textBody.textContent = 'No CLI could answer. See the Logs tab.';
+    if (authorTag.textContent === 'Processing') authorTag.textContent = data.backend || 'relay';
+    appendTerminalLine(`[Turn End] Finished with ${data.backend || 'relay'}`);
+  } else if (type === 'turn_error') {
+    textBody.textContent += data.error;
+    authorTag.textContent = 'error';
+    appendTerminalLine(`[Error] ${data.error}`, 'error');
   }
 }
 
@@ -586,6 +596,12 @@ async function abortTurn() {
 
 // Handle Quick Commands
 async function handleQuickCommand(cmd) {
+  // chips that prefill relay syntax rather than act on the app
+  if (cmd.endsWith(' ')) {
+    elPromptInput.value = cmd;
+    elPromptInput.focus();
+    return;
+  }
   appendTerminalLine(`[User Command] ${cmd}`);
   const parts = cmd.split(/\s+/);
   const action = parts[0];
@@ -619,7 +635,7 @@ async function loadSessions() {
         <div class="session-item ${isCur ? 'active' : ''}" onclick="switchSession('${s.sid}')">
           <div class="session-item-title">
             <span>${s.name || s.sid.slice(0, 8)}</span>
-            <span style="color: #64748b; font-size: 10px;">${s.messages || 0} turns</span>
+            <span class="turns">${s.messages || 0} turns</span>
           </div>
           <div class="session-item-sub">${date} · ${s.cwd ? s.cwd.split('/').pop() : ''}</div>
         </div>
@@ -629,11 +645,11 @@ async function loadSessions() {
   } catch (err) {
     elSessionList.innerHTML = `
       <div class="session-item active">
-        <div class="session-item-title"><span>a306ace6</span><span style="color: #64748b; font-size: 10px;">18 turns</span></div>
+        <div class="session-item-title"><span>a306ace6</span><span class="turns">18 turns</span></div>
         <div class="session-item-sub">Today · relay</div>
       </div>
       <div class="session-item">
-        <div class="session-item-title"><span>f491b20c</span><span style="color: #64748b; font-size: 10px;">6 turns</span></div>
+        <div class="session-item-title"><span>f491b20c</span><span class="turns">6 turns</span></div>
         <div class="session-item-sub">Yesterday · api-gateway</div>
       </div>
     `;
@@ -691,7 +707,7 @@ async function createNewSession() {
 async function syncAgents() {
   try {
     await fetch('/api/status'); // Triggers app sync
-    showToast('✓ AGENTS.md progress block refreshed!');
+    showToast('AGENTS.md progress block refreshed.');
     loadAgentsMd();
   } catch (err) {
     console.error(err);
