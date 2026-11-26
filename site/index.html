@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Relay — One session. Every AI coding CLI.</title>
   <meta name="description" content="Relay keeps one continuous session across every AI coding CLI. When one runs out of credits, the next picks up mid-task with the full transcript in hand.">
-  <meta name="theme-color" content="#080910">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Relay — One session. Every AI coding CLI.">
   <meta property="og:description" content="Never lose your flow to a rate limit. Shared transcript, credit failover, and a desktop companion for the CLIs you already use.">
@@ -21,15 +23,12 @@
 
   <svg class="svg-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
     <defs>
-      <linearGradient id="brandGradient" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#a78bfa"/>
-        <stop offset="1" stop-color="#22d3ee"/>
-      </linearGradient>
+
     </defs>
     <symbol id="i-logo" viewBox="0 0 32 32">
-      <path d="M16 2.5 29.5 16 16 29.5 2.5 16 16 2.5Z" fill="url(#brandGradient)"/>
-      <path d="M11 16h10m-4.4-4.6L21 16l-4.4 4.6" fill="none" stroke="#0a0b12" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
-    </symbol>
+        <rect width="32" height="32" rx="8" fill="#0a7aff"/>
+        <path d="M9 16h14m-6-6 6 6-6 6" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
     <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M7 17 17 7M8 7h9v9"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="m9 7 9 5-9 5V7Z"/></symbol>
@@ -54,15 +53,11 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   </svg>
 
-  <div class="page-glow" aria-hidden="true"></div>
-  <div class="page-grid" aria-hidden="true"></div>
-
   <header class="site-header" id="top">
     <div class="container nav-inner">
       <a class="brand" href="#top" aria-label="Relay home">
         <svg class="brand-mark" aria-hidden="true"><use href="#i-logo"/></svg>
         <span class="brand-name">relay</span>
-        <span class="brand-tag">CLI</span>
       </a>
 
       <nav class="nav-links" id="navLinks" aria-label="Primary navigation">
@@ -108,7 +103,7 @@
             <div class="mock-topbar">
               <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
               <span class="mock-title">relay — session / 8f2a</span>
-              <span class="mock-live"><i aria-hidden="true"></i> LIVE</span>
+              <span class="mock-live">Example</span>
             </div>
             <div class="mock-body">
               <div class="mock-prompt">
@@ -139,9 +134,9 @@
               </ol>
               <div class="mock-footer">
                 <div class="mock-chips" aria-hidden="true">
-                  <span class="backend-chip violet">◆ claude</span>
-                  <span class="backend-chip cyan">◆ qwen</span>
-                  <span class="backend-chip green">◆ freebuff</span>
+                  <span class="backend-chip violet">claude</span>
+                  <span class="backend-chip cyan">qwen</span>
+                  <span class="backend-chip green">freebuff</span>
                 </div>
                 <span class="mock-context">context carried →</span>
               </div>
@@ -169,7 +164,7 @@
       <div class="container">
         <p class="logos-label">Orchestrates the tools already in your stack</p>
         <div class="logo-list">
-          <span class="logo-item">◆ antigravity</span>
+          <span class="logo-item">antigravity</span>
           <span class="logo-item">Claude Code</span>
           <span class="logo-item">Qwen Code</span>
           <span class="logo-item">kilo</span>
@@ -378,11 +373,11 @@
               <p id="strategyDescription">Ask your favorite CLI first. Relay fails over down your order only when credits expire or a backend is marked in cooldown.</p>
             </div>
             <div class="route-visual" aria-hidden="true">
-              <span class="route-chip" data-tier="paid">◆ claude</span>
-              <span class="route-chip" data-tier="free">◆ qwen</span>
-              <span class="route-chip" data-tier="free">◆ freebuff</span>
-              <span class="route-chip" data-tier="paid">◆ junie</span>
-              <span class="route-chip" data-tier="free">◆ agy</span>
+              <span class="route-chip" data-tier="paid">claude</span>
+              <span class="route-chip" data-tier="free">qwen</span>
+              <span class="route-chip" data-tier="free">freebuff</span>
+              <span class="route-chip" data-tier="paid">junie</span>
+              <span class="route-chip" data-tier="free">agy</span>
             </div>
             <div class="code-block strategy-code">
               <code id="strategyCommand">relay strategy priority</code>
@@ -438,7 +433,7 @@
             </ul>
           </div>
           <div class="install-box">
-            <p class="install-label"><span class="eyebrow-dot" aria-hidden="true"></span> Install in 30 seconds</p>
+            <p class="install-label"><span class="eyebrow-dot" aria-hidden="true"></span> Install</p>
             <div class="code-block">
               <code>git clone https://github.com/plzgimmeaname/relay.git</code>
               <button class="copy-btn" type="button" data-copy="git clone https://github.com/plzgimmeaname/relay.git" aria-label="Copy clone command"><svg class="icon"><use href="#i-copy"/></svg></button>
@@ -510,7 +505,6 @@
         <a class="brand" href="#top" aria-label="Relay home">
           <svg class="brand-mark" aria-hidden="true"><use href="#i-logo"/></svg>
           <span class="brand-name">relay</span>
-          <span class="brand-tag">CLI</span>
         </a>
         <p>One session across every coding CLI. Built for developers who ship.</p>
       </div>

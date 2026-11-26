@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>Relay</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>◆</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230a84ff'/><path d='M9 16h14m-6-6 6 6-6 6' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 </head>
 <body>
   <!-- SVG icon sprite -->
@@ -27,221 +28,190 @@
       <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
       <symbol id="i-tool" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+      <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+      <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9.5 4v16"/></symbol>
+      <symbol id="i-inspector" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M14.5 4v16"/></symbol>
+      <symbol id="i-command" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M14.5 7.5l-5 9"/></symbol>
     </defs>
   </svg>
 
-  <div id="app" class="app-container">
-    <!-- Top Navigation Header -->
-    <header class="app-header">
-      <div class="header-left">
+  <div id="app" class="window">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="Library">
+      <div class="sidebar-top">
         <div class="brand">
-          <span class="brand-icon">◆</span>
+          <span class="brand-mark" aria-hidden="true"><svg class="ic"><use href="#i-arrow-right"/></svg></span>
           <span class="brand-title">Relay</span>
         </div>
-        <div class="cwd-badge" id="cwdBadge" title="Working directory">
-          <span class="icon"><svg class="ic"><use href="#i-folder"/></svg></span>
-          <span class="cwd-text" id="cwdText">...</span>
-        </div>
+        <button id="btnNewSession" class="icon-btn" title="New session" aria-label="New session"><svg class="ic"><use href="#i-plus"/></svg></button>
       </div>
 
-      <div class="header-center">
-        <!-- Routing Strategy Selector -->
-        <div class="strategy-selector-container">
-          <span class="strategy-label">Strategy</span>
-          <div class="strategy-pills" id="strategyPills">
-            <button class="pill-btn active" data-strategy="priority" title="Strict priority order: ask first choice, fallback down list">
-              <svg class="ic ic-sm"><use href="#i-zap"/></svg> Priority
-            </button>
-            <button class="pill-btn" data-strategy="pool" title="Round-robin pool: balances turns evenly to prevent rate limits">
-              <svg class="ic ic-sm"><use href="#i-repeat"/></svg> Credit Pool
-            </button>
-            <button class="pill-btn" data-strategy="free-first" title="Free tiers first: burns free quotas before touching paid credits">
-              <svg class="ic ic-sm"><use href="#i-gift"/></svg> Free First
-            </button>
+      <div class="segmented sidebar-tabs" role="group" aria-label="Sidebar view">
+        <span class="segment-thumb" aria-hidden="true"></span>
+        <button class="segment sidebar-tab active" data-tab="sessions">Sessions</button>
+        <button class="segment sidebar-tab" data-tab="agents">AGENTS.md</button>
+        <button class="segment sidebar-tab" data-tab="logs">Logs</button>
+      </div>
+
+      <div class="sidebar-content">
+        <div class="tab-panel active" id="tabSessions">
+          <div class="panel-header">
+            <span>Saved sessions</span>
+            <button class="icon-btn small" id="btnRefreshSessions" title="Refresh sessions" aria-label="Refresh sessions"><svg class="ic ic-sm"><use href="#i-refresh"/></svg></button>
+          </div>
+          <div class="session-list" id="sessionList">
+            <div class="placeholder">Loading sessions…</div>
           </div>
         </div>
+
+        <div class="tab-panel" id="tabAgents">
+          <div class="panel-header">
+            <span>Shared progress</span>
+            <button class="text-btn" id="btnSyncAgents">Sync now</button>
+          </div>
+          <pre class="agents-preview" id="agentsPreview">Reading AGENTS.md…</pre>
+        </div>
+
+        <div class="tab-panel" id="tabLogs">
+          <div class="panel-header">
+            <span>Engine logs</span>
+            <button class="icon-btn small" id="btnRefreshLogs" title="Refresh logs" aria-label="Refresh logs"><svg class="ic ic-sm"><use href="#i-refresh"/></svg></button>
+          </div>
+          <div class="logs-container" id="logsContainer"></div>
+        </div>
       </div>
 
-      <div class="header-right">
-        <button id="btnScan" class="action-btn scan-btn" title="Scan system for installed AI CLIs">
-          <svg class="ic ic-sm"><use href="#i-search"/></svg> Scan
+      <div class="sidebar-footer">
+        <button id="btnScan" class="row-btn" title="Find AI CLIs installed on this computer">
+          <svg class="ic"><use href="#i-search"/></svg> Scan for CLIs
         </button>
-        <button id="btnResetQuota" class="action-btn reset-btn" title="Clear all quota and cooldown locks">
-          <svg class="ic ic-sm"><use href="#i-reset"/></svg> Reset limits
-        </button>
-        <button id="btnNewSession" class="action-btn primary-btn" title="Start fresh session">
-          <svg class="ic ic-sm"><use href="#i-plus"/></svg> New session
+        <button id="btnResetQuota" class="row-btn" title="Clear all quota and cooldown marks">
+          <svg class="ic"><use href="#i-reset"/></svg> Reset limits
         </button>
       </div>
-    </header>
+    </aside>
 
-    <!-- Backend Health Command Center -->
-    <section class="credit-bar-section">
-      <div class="section-title-row">
-        <div class="section-title">
-          Backends
-          <span class="subtitle">Unified credit pool across connected CLIs</span>
-        </div>
-        <div class="credit-stats-summary" id="creditSummary">
-          Loading backends...
-        </div>
-      </div>
-      <div class="backend-cards-scroll" id="backendCardsContainer"></div>
-    </section>
-
-    <!-- Main Workspace -->
-    <main class="main-workspace">
-      <!-- Left Sidebar: Sessions & Settings -->
-      <aside class="sidebar" id="sidebar">
-        <div class="sidebar-tabs">
-          <button class="sidebar-tab active" data-tab="sessions">Sessions</button>
-          <button class="sidebar-tab" data-tab="agents">AGENTS.md</button>
-          <button class="sidebar-tab" data-tab="logs">Logs</button>
-        </div>
-
-        <div class="sidebar-content">
-          <!-- Sessions List Panel -->
-          <div class="tab-panel active" id="tabSessions">
-            <div class="sessions-header">
-              <span>Saved sessions</span>
-              <button class="icon-btn" id="btnRefreshSessions" title="Refresh"><svg class="ic"><use href="#i-refresh"/></svg></button>
-            </div>
-            <div class="session-list" id="sessionList">
-              <div class="loading-placeholder">Loading sessions...</div>
-            </div>
+    <!-- Conversation -->
+    <main class="content">
+      <header class="toolbar">
+        <button class="icon-btn" id="btnToggleSidebar" title="Show or hide sidebar" aria-label="Show or hide sidebar"><svg class="ic"><use href="#i-sidebar"/></svg></button>
+        <div class="toolbar-title">
+          <div class="title-line">
+            <span>Session</span>
+            <span class="session-id" id="currentSessionId">…</span>
+            <span class="backend-tag" id="activeBackendTag">Auto</span>
           </div>
-
-          <!-- AGENTS.md Sync Panel -->
-          <div class="tab-panel" id="tabAgents">
-            <div class="agents-header">
-              <span>AGENTS.md sync</span>
-              <button class="btn-sync" id="btnSyncAgents">Sync now</button>
-            </div>
-            <pre class="agents-preview" id="agentsPreview">Reading AGENTS.md block...</pre>
-          </div>
-
-          <!-- Logs Panel -->
-          <div class="tab-panel" id="tabLogs">
-            <div class="logs-header">
-              <span>Engine logs</span>
-              <button class="icon-btn" id="btnRefreshLogs" title="Refresh logs"><svg class="ic"><use href="#i-refresh"/></svg></button>
-            </div>
-            <div class="logs-container" id="logsContainer"></div>
-          </div>
-        </div>
-      </aside>
-
-      <!-- Center Chat & Stream Area -->
-      <section class="chat-area">
-        <div class="chat-header">
-          <div class="session-info">
-            <span class="session-tag">Session</span>
-            <span class="session-id" id="currentSessionId">...</span>
-            <span class="active-backend-tag" id="activeBackendTag">Auto</span>
-          </div>
-
-          <div class="view-mode-toggle">
-            <button class="view-mode-btn active" data-mode="chat">
-              <svg class="ic ic-sm"><use href="#i-chat"/></svg> Chat
-            </button>
-            <button class="view-mode-btn" data-mode="terminal">
-              <svg class="ic ic-sm"><use href="#i-terminal"/></svg> Terminal
-            </button>
+          <div class="cwd" id="cwdBadge" title="Working directory">
+            <svg class="ic ic-xs"><use href="#i-folder"/></svg>
+            <span id="cwdText">…</span>
           </div>
         </div>
 
-        <!-- Chat View Container -->
-        <div class="messages-container" id="messagesContainer">
-          <div class="welcome-banner" id="welcomeBanner">
-            <div class="welcome-icon">◆</div>
-            <h2>Relay</h2>
-            <p>One conversation across all your coding CLIs, with automatic credit failover.</p>
-            <div class="quick-chips">
-              <button class="chip" data-prompt="explain this project and architecture">explain this project and architecture</button>
-              <button class="chip" data-prompt="check git status and recent commits">check git status and recent commits</button>
-              <button class="chip" data-prompt="review tests and test coverage">review tests and test coverage</button>
+        <div class="toolbar-spacer"></div>
+
+        <div class="segmented view-toggle" role="group" aria-label="View">
+          <span class="segment-thumb" aria-hidden="true"></span>
+          <button class="segment view-mode-btn active" data-mode="chat" aria-label="Chat"><svg class="ic ic-sm"><use href="#i-chat"/></svg><span>Chat</span></button>
+          <button class="segment view-mode-btn" data-mode="terminal" aria-label="Terminal"><svg class="ic ic-sm"><use href="#i-terminal"/></svg><span>Terminal</span></button>
+        </div>
+        <button class="icon-btn" id="btnToggleInspector" title="Show or hide backends" aria-label="Show or hide backends"><svg class="ic"><use href="#i-inspector"/></svg></button>
+      </header>
+
+      <div class="stage">
+        <div class="messages" id="messagesContainer">
+          <div class="welcome" id="welcomeBanner">
+            <span class="welcome-mark" aria-hidden="true"><svg class="ic"><use href="#i-arrow-right"/></svg></span>
+            <h1>What are we working on?</h1>
+            <p>One conversation across all your coding CLIs. When one runs out of credits, the next takes over.</p>
+            <div class="suggestions">
+              <button class="chip" data-prompt="explain this project and architecture">Explain this project and its architecture</button>
+              <button class="chip" data-prompt="check git status and recent commits">Check git status and recent commits</button>
+              <button class="chip" data-prompt="review tests and test coverage">Review tests and test coverage</button>
             </div>
           </div>
         </div>
 
-        <!-- Terminal Stream Container (Hidden by default) -->
-        <div class="terminal-container" id="terminalContainer" style="display: none;">
+        <div class="terminal" id="terminalContainer" style="display: none;">
           <div class="terminal-output" id="terminalOutput">
-            <div class="term-line info">[relay] Initialized and waiting for turns...</div>
+            <div class="term-line info">[relay] Ready and waiting for a turn.</div>
           </div>
         </div>
 
-        <!-- Failover / Event Notification Banner -->
-        <div class="failover-toast" id="failoverToast" style="display: none;">
-          <div class="toast-content">
-            <span class="toast-icon"><svg class="ic"><use href="#i-alert"/></svg></span>
-            <span class="toast-text" id="failoverText">Failover triggered</span>
-          </div>
+        <div class="toast" id="failoverToast" role="status" aria-live="polite">
+          <svg class="ic ic-sm"><use href="#i-alert"/></svg>
+          <span id="failoverText"></span>
         </div>
+      </div>
 
-        <!-- Input Dock Area -->
-        <div class="input-dock">
-          <div class="quick-commands-bar" id="quickCommandsBar">
-            <span class="quick-title">Quick commands:</span>
-            <button class="quick-cmd" data-cmd="/auto ">/auto</button>
-            <button class="quick-cmd" data-cmd="/skill list">/skill list</button>
-            <button class="quick-cmd" data-cmd="/credits">/credits</button>
-            <button class="quick-cmd" data-cmd="/scan">/scan</button>
-            <button class="quick-cmd" data-cmd="/strategy pool">/strategy pool</button>
-            <button class="quick-cmd" data-cmd="/strategy free-first">/strategy free-first</button>
-            <button class="quick-cmd" data-cmd="/status">/status</button>
-            <button class="quick-cmd" data-cmd="/backends">/backends</button>
-            <button class="quick-cmd" data-cmd="/sync">/sync</button>
-            <button class="quick-cmd" data-cmd="/forget all">/forget all</button>
-          </div>
-
-          <div class="prompt-box-wrapper">
-            <div class="prompt-tools">
-              <select id="backendPinSelect" class="backend-select" title="Pin a specific CLI or let Relay choose based on strategy"></select>
+      <div class="composer-dock">
+        <div class="composer">
+          <textarea id="promptInput" class="prompt" aria-label="Message" placeholder="Ask anything, tag @cli, run a /skill, or /auto a list of tasks" rows="2"></textarea>
+          <div class="composer-bar">
+            <div class="menu-anchor">
+              <button class="icon-btn small" id="btnCommands" title="Commands" aria-label="Commands" aria-haspopup="true" aria-expanded="false"><svg class="ic ic-sm"><use href="#i-command"/></svg></button>
+              <div class="menu" id="commandMenu">
+                <button class="menu-item quick-cmd" data-cmd="/auto "><b>/auto</b><span>Split work into tasks</span></button>
+                <button class="menu-item quick-cmd" data-cmd="/skill list"><b>/skill list</b><span>Imported skills</span></button>
+                <hr>
+                <button class="menu-item quick-cmd" data-cmd="/status"><b>/status</b><span>Refresh status</span></button>
+                <button class="menu-item quick-cmd" data-cmd="/sync"><b>/sync</b><span>Update AGENTS.md</span></button>
+                <button class="menu-item quick-cmd" data-cmd="/scan"><b>/scan</b><span>Find installed CLIs</span></button>
+                <button class="menu-item quick-cmd" data-cmd="/forget all"><b>/forget all</b><span>Reset limits</span></button>
+              </div>
             </div>
-
-            <textarea
-              id="promptInput"
-              class="prompt-textarea"
-              placeholder="Ask anything, tag @cli, run a /skill, or /auto a list of tasks..."
-              rows="2"
-            ></textarea>
-
-            <div class="prompt-actions">
-              <button id="btnAbort" class="abort-btn" style="display: none;" title="Stop execution">
-                <svg class="ic"><use href="#i-stop"/></svg>
-              </button>
-              <button id="btnSend" class="send-btn" title="Send (Enter)">
-                <svg class="ic"><use href="#i-send"/></svg>
-              </button>
-            </div>
-          </div>
-
-          <div class="input-status-bar">
-            <span class="status-indicator ready" id="statusDot"></span>
-            <span class="status-text" id="statusText">Ready</span>
-            <span class="tip-text">Enter to send · Shift+Enter for a newline</span>
+            <select id="backendPinSelect" class="backend-select" aria-label="CLI to use" title="Pin a CLI, or let Relay choose using the routing strategy"></select>
+            <div class="toolbar-spacer"></div>
+            <button id="btnAbort" class="send-btn stop" style="display: none;" title="Stop" aria-label="Stop"><svg class="ic ic-sm"><use href="#i-stop"/></svg></button>
+            <button id="btnSend" class="send-btn" title="Send (Enter)" aria-label="Send"><svg class="ic ic-sm"><use href="#i-arrow-up"/></svg></button>
           </div>
         </div>
-      </section>
+        <div class="status-bar">
+          <span class="status-dot ready" id="statusDot"></span>
+          <span id="statusText">Ready</span>
+          <span class="hint">Return to send · Shift Return for a new line</span>
+        </div>
+      </div>
     </main>
 
-    <!-- Scan Modal Dialog -->
-    <div class="modal-backdrop" id="scanModal" style="display: none;">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3>Auto-scan AI CLIs</h3>
-          <button class="modal-close" id="btnCloseScanModal" title="Close"><svg class="ic"><use href="#i-x"/></svg></button>
+    <!-- Backends inspector -->
+    <aside class="inspector" id="inspector" aria-label="Backends">
+      <section class="inspector-section">
+        <h2>Routing</h2>
+        <div class="segmented stacked" id="strategyPills" role="group" aria-label="Routing strategy">
+          <span class="segment-thumb" aria-hidden="true"></span>
+          <button class="segment pill-btn active" data-strategy="priority">Priority</button>
+          <button class="segment pill-btn" data-strategy="pool">Pool</button>
+          <button class="segment pill-btn" data-strategy="free-first">Free first</button>
         </div>
-        <div class="modal-body">
-          <p class="modal-desc">Scanning system PATH for installed AI coding CLIs...</p>
-          <div class="scan-results-list" id="scanResultsList">
-            <div class="loading-spinner">Scanning...</div>
+        <p class="footnote" id="strategyHint"></p>
+      </section>
+      <section class="inspector-section grow">
+        <div class="inspector-heading">
+          <h2>Backends</h2>
+          <span class="footnote" id="creditSummary">Loading…</span>
+        </div>
+        <div class="backend-list" id="backendCardsContainer"></div>
+        <p class="footnote">Select a CLI to use it for the next turn.</p>
+      </section>
+    </aside>
+
+    <div class="drawer-scrim" id="drawerScrim"></div>
+
+    <!-- Scan sheet -->
+    <div class="sheet-backdrop" id="scanModal">
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="scanTitle">
+        <div class="sheet-header">
+          <div>
+            <h2 id="scanTitle">Installed CLIs</h2>
+            <p>Relay looks for coding CLIs on this computer.</p>
           </div>
+          <button class="icon-btn small" id="btnCloseScanModal" title="Close" aria-label="Close"><svg class="ic ic-sm"><use href="#i-x"/></svg></button>
         </div>
-        <div class="modal-footer">
-          <button class="btn secondary" id="btnCancelScan">Close</button>
-          <button class="btn primary" id="btnAutoConnectAll">Auto-connect all found</button>
+        <div class="scan-results" id="scanResultsList"><div class="placeholder">Scanning…</div></div>
+        <div class="sheet-footer">
+          <button class="btn" id="btnCancelScan">Close</button>
+          <button class="btn primary" id="btnAutoConnectAll">Connect all found</button>
         </div>
       </div>
     </div>

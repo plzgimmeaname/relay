@@ -217,6 +217,48 @@
     revealItems.forEach(function (item) { item.classList.add("is-visible"); });
   }
 
+  /* Sliding thumbs under the segmented controls --------------------------- */
+  // a CSS transition retargets from the thumb's current position, so a second
+  // click mid-move redirects it without a jump
+  var groups = Array.prototype.slice.call(document.querySelectorAll(".showcase-tabs, .segmented")).map(function (group) {
+    var thumb = document.createElement("span");
+    thumb.className = "segment-thumb";
+    thumb.setAttribute("aria-hidden", "true");
+    group.insertBefore(thumb, group.firstChild);
+
+    function place() {
+      var active = group.querySelector(".is-active");
+      if (!active || !active.offsetWidth) return;
+      thumb.style.width = active.offsetWidth + "px";
+      thumb.style.transform = "translateX(" + active.offsetLeft + "px)";
+    }
+
+    thumb.style.transition = "none";
+    place();
+    group.classList.add("has-thumb");
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { thumb.style.transition = ""; });
+    });
+    // after the buttons' own handlers have moved .is-active
+    group.addEventListener("click", place);
+    group.addEventListener("keyup", place);
+    return place;
+  });
+
+  function placeThumbs() {
+    groups.forEach(function (place) { place(); });
+  }
+  window.addEventListener("resize", placeThumbs);
+  window.addEventListener("load", placeThumbs);
+
+  /* Header edge appears once content scrolls under it ---------------------- */
+  var header = document.querySelector(".site-header");
+  function markScrolled() {
+    if (header) header.classList.toggle("is-scrolled", window.scrollY > 4);
+  }
+  window.addEventListener("scroll", markScrolled, { passive: true });
+  markScrolled();
+
   /* Footer year ----------------------------------------------------------- */
   var year = document.getElementById("year");
   if (year) year.textContent = String(new Date().getFullYear());

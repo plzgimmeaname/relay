@@ -44,21 +44,81 @@ const elBtnRefreshLogs = document.getElementById('btnRefreshLogs');
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   setupEventListeners();
-  loadStatus();
-  loadSessions();
+  setupChrome();
+  loadStatus().then(loadSessions);
   setInterval(loadStatus, 3000);
 
-  const params = new URLSearchParams(window.location.search);
-  const view = params.get('view');
-  if (view === 'scan') {
-    openScanModal();
-  } else if (view === 'terminal') {
+  if (new URLSearchParams(window.location.search).get('view') === 'terminal') {
     document.querySelector('.view-mode-btn[data-mode="terminal"]')?.click();
-  } else if (view === 'failover') {
-    elFailoverText.textContent = 'Qwen rate-limited (HTTP 429). Failing over to Freebuff with transcript digest...';
-    elFailoverToast.style.display = 'block';
   }
 });
+
+const elApp = document.getElementById('app');
+const elCommandMenu = document.getElementById('commandMenu');
+const elBtnCommands = document.getElementById('btnCommands');
+
+// slide each segmented control's thumb under its selected button
+function placeThumbs() {
+  document.querySelectorAll('.segmented').forEach((group) => {
+    const on = group.querySelector('.segment.active');
+    const thumb = group.querySelector('.segment-thumb');
+    if (!on || !thumb || !on.offsetWidth) return;
+    thumb.style.width = `${on.offsetWidth}px`;
+    thumb.style.transform = `translateX(${on.offsetLeft}px)`;
+    // animate only after the first placement
+    if (!group.classList.contains('ready')) requestAnimationFrame(() => group.classList.add('ready'));
+  });
+}
+
+function setMenu(open) {
+  elCommandMenu.classList.toggle('open', open);
+  elBtnCommands.setAttribute('aria-expanded', String(open));
+}
+
+// wide windows collapse a side panel; narrow ones slide it over the conversation
+function togglePanel(name, narrowAt) {
+  if (window.matchMedia(`(max-width: ${narrowAt}px)`).matches) elApp.classList.toggle(`${name}-open`);
+  else elApp.classList.toggle(`${name}-hidden`);
+  placeThumbs();
+}
+
+function closeDrawers() {
+  elApp.classList.remove('sidebar-open', 'inspector-open');
+}
+
+function closeScan() {
+  elScanModal.classList.remove('open');
+}
+
+function setupChrome() {
+  document.getElementById('btnToggleSidebar').addEventListener('click', () => togglePanel('sidebar', 720));
+  document.getElementById('btnToggleInspector').addEventListener('click', () => togglePanel('inspector', 1040));
+  document.getElementById('drawerScrim').addEventListener('click', closeDrawers);
+  elBtnCommands.addEventListener('click', () => setMenu(!elCommandMenu.classList.contains('open')));
+  document.addEventListener('pointerdown', (e) => {
+    if (!e.target.closest('.menu-anchor')) setMenu(false);
+  });
+  elScanModal.addEventListener('click', (e) => {
+    if (e.target === elScanModal) closeScan();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    setMenu(false);
+    closeScan();
+    closeDrawers();
+  });
+  elBackendCards.addEventListener('click', (e) => {
+    const row = e.target.closest('.backend');
+    if (row) pinBackend(row.dataset.name);
+  });
+  elSessionList.addEventListener('click', (e) => {
+    const item = e.target.closest('.session-item');
+    if (item) switchSession(item.dataset.sid);
+  });
+  window.addEventListener('resize', placeThumbs);
+  new ResizeObserver(placeThumbs).observe(elApp);
+  placeThumbs();
+}
 
 function setupEventListeners() {
   // Strategy Pills
@@ -97,6 +157,7 @@ function setupEventListeners() {
   // Quick Commands
   document.querySelectorAll('.quick-cmd').forEach((b) => {
     b.addEventListener('click', () => {
+      setMenu(false);
       if (APP_COMMANDS.includes(b.dataset.cmd.split(/\s+/)[0]) || b.dataset.cmd.endsWith(' ')) handleQuickCommand(b.dataset.cmd);
       else {
         elPromptInput.value = b.dataset.cmd;
@@ -110,6 +171,7 @@ function setupEventListeners() {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.view-mode-btn').forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
+      placeThumbs();
       const mode = btn.dataset.mode;
       if (mode === 'chat') {
         elMessagesContainer.style.display = 'flex';
@@ -129,6 +191,7 @@ function setupEventListeners() {
       tab.classList.add('active');
       const panelId = 'tab' + tab.dataset.tab.charAt(0).toUpperCase() + tab.dataset.tab.slice(1);
       document.getElementById(panelId)?.classList.add('active');
+      placeThumbs();
       if (tab.dataset.tab === 'logs') loadLogs();
       if (tab.dataset.tab === 'agents') loadAgentsMd();
     });
@@ -136,8 +199,8 @@ function setupEventListeners() {
 
   // Modals & Action buttons
   elBtnScan.addEventListener('click', openScanModal);
-  elBtnCloseScanModal.addEventListener('click', () => (elScanModal.style.display = 'none'));
-  elBtnCancelScan.addEventListener('click', () => (elScanModal.style.display = 'none'));
+  elBtnCloseScanModal.addEventListener('click', closeScan);
+  elBtnCancelScan.addEventListener('click', closeScan);
   elBtnAutoConnectAll.addEventListener('click', performAutoConnect);
   elBtnResetQuota.addEventListener('click', resetAllLimits);
   elBtnNewSession.addEventListener('click', createNewSession);
@@ -158,93 +221,94 @@ async function loadStatus() {
     renderCreditCards(data.backends, data.status.backend);
     updateStrategyPills(data.strategy);
     updateBackendPinOptions(data.backends);
+    setOffline(false);
   } catch (err) {
-    if (!currentStatus) {
-      const fallbackData = {
-        cwd: '/Users/n00b/Coding/relay',
-        session: 'a306ace6-507b-4af5',
-        strategy: 'priority',
-        status: { backend: 'agy', agents: 'AGENTS.md' },
-        backends: [
-          { name: 'agy', label: 'Antigravity (Google)', freeTier: true, state: 'ready', turns: 4, successRate: '100%', dialect: 'claude' },
-          { name: 'claude', label: 'Claude Code', freeTier: false, state: 'ready', turns: 12, successRate: '100%', dialect: 'claude' },
-          { name: 'kilo', label: 'Kilo Code', freeTier: true, state: 'ready', turns: 3, successRate: '100%', dialect: 'text' },
-          { name: 'freebuff', label: 'Freebuff AI', freeTier: true, state: 'ready', turns: 8, successRate: '100%', dialect: 'text' },
-          { name: 'qwen', label: 'Qwen Code', freeTier: true, state: 'ready', turns: 6, successRate: '100%', dialect: 'claude' },
-          { name: 'junie', label: 'Junie (JetBrains)', freeTier: false, state: 'ready', turns: 2, successRate: '100%', dialect: 'junie' },
-          { name: 'opencode', label: 'OpenCode', freeTier: true, state: 'ready', turns: 1, successRate: '100%', dialect: 'text' },
-        ],
-      };
-      renderHeader(fallbackData);
-      renderCreditCards(fallbackData.backends, 'agy');
-      updateStrategyPills('priority');
-      updateBackendPinOptions(fallbackData.backends);
-    }
+    setOffline(true);
+  }
+}
+
+let isOffline = false;
+function setOffline(offline) {
+  if (offline === isOffline) return;
+  isOffline = offline;
+  elBtnSend.disabled = offline;
+  if (!isBusy) {
+    elStatusDot.className = `status-dot ${offline ? 'offline' : 'ready'}`;
+    elStatusText.textContent = offline ? "Can't reach Relay. Check that relay desktop is still running." : 'Ready';
   }
 }
 
 function renderHeader(data) {
   elCwdText.textContent = data.cwd;
+  document.getElementById('cwdBadge').title = data.cwd;
   elCurrentSessionId.textContent = data.session.slice(0, 8);
-  elActiveBackendTag.textContent = data.status.backend ? `▸ ${data.status.backend}` : 'Auto';
+  elActiveBackendTag.textContent = data.status.backend || 'Auto';
 }
+
+const STRATEGY_HINTS = {
+  priority: 'Uses your first CLI, and moves down the list only when it runs out.',
+  pool: 'Takes turns across ready CLIs so no single one hits its limit early.',
+  'free-first': 'Uses free tiers before spending paid credits.',
+};
 
 function updateStrategyPills(activeStrategy) {
   document.querySelectorAll('.pill-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.strategy === activeStrategy);
+    const on = btn.dataset.strategy === activeStrategy;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-pressed', String(on));
   });
+  document.getElementById('strategyHint').textContent = STRATEGY_HINTS[activeStrategy] || '';
+  placeThumbs();
 }
 
+// rebuild only on change: the poll would otherwise drop focus, an open list or a press
+let lastPinHtml = '';
+let lastBackendHtml = '';
+
 function updateBackendPinOptions(backends) {
-  const currentVal = elBackendPinSelect.value;
-  let html = '<option value="">Auto (relay strategy)</option>';
+  let html = '<option value="">Automatic</option>';
   for (const b of backends) {
-    const stateTag = b.state === 'ready' ? 'ready' : b.state === 'cooldown' ? 'cooldown' : 'depleted';
-    html += `<option value="${b.name}">${b.label || b.name} · ${stateTag}</option>`;
+    const note = b.state === 'ready' ? '' : b.state === 'cooldown' ? ' (cooling down)' : ' (out of credits)';
+    html += `<option value="${escapeHtml(b.name)}">${escapeHtml(b.label || b.name)}${note}</option>`;
   }
+  if (html === lastPinHtml) return;
+  lastPinHtml = html;
+  const currentVal = elBackendPinSelect.value;
   elBackendPinSelect.innerHTML = html;
   elBackendPinSelect.value = currentVal;
 }
 
 function renderCreditCards(backends, activeBackend) {
   if (!backends || !backends.length) {
-    elBackendCards.innerHTML = '<div class="loading-placeholder">No CLIs connected yet. Run Scan to detect them.</div>';
-    elCreditSummary.textContent = '0 connected';
+    elCreditSummary.textContent = 'None connected';
+    elBackendCards.innerHTML = lastBackendHtml = '';
     return;
   }
 
   const readyCount = backends.filter((b) => b.state === 'ready').length;
-  elCreditSummary.textContent = `${readyCount} / ${backends.length} ready in credit pool`;
+  elCreditSummary.textContent = `${readyCount} of ${backends.length} ready`;
 
   let html = '';
   for (const b of backends) {
     const isCurActive = b.name === activeBackend;
-    const dotClass = b.state === 'ready' ? 'ready' : b.state === 'cooldown' ? 'cooldown' : 'out';
-    const statusText = b.state === 'ready' ? 'Ready' : b.state === 'cooldown' ? `Cooldown (${b.cooldownText})` : 'Out of credits';
-    const tierClass = b.freeTier ? 'free' : 'paid';
-    const tierText = b.freeTier ? 'Free Tier' : 'Premium';
+    const state = b.state === 'ready' ? 'ready' : b.state === 'cooldown' ? 'cooldown' : 'out';
+    const statusText = state === 'ready' ? 'Ready' : state === 'cooldown' ? `Cooling down ${b.cooldownText}` : 'Out of credits';
 
     html += `
-      <div class="cli-card ${isCurActive ? 'active' : ''}" data-name="${b.name}" onclick="pinBackend('${b.name}')">
-        <div class="cli-card-header">
-          <div class="cli-name-group">
-            <span class="cli-status-dot ${dotClass}"></span>
-            <span class="cli-title">${b.label || b.name}</span>
-          </div>
-          <span class="tier-badge ${tierClass}">${tierText}</span>
-        </div>
-        <div class="cli-card-meta">
-          <span class="cli-status-label ${dotClass}">${statusText}</span>
-          <span>${b.successRate}</span>
-        </div>
-        <div class="cli-card-footer">
-          <span>${b.turns} turns</span>
-          <span>${b.dialect}</span>
-        </div>
-      </div>
+      <button class="backend ${isCurActive ? 'active' : ''}" data-name="${escapeHtml(b.name)}" aria-pressed="${isCurActive}" title="${escapeHtml(b.label || b.name)} · ${escapeHtml(b.dialect)} protocol · ${escapeHtml(b.successRate)} success">
+        <span class="backend-row">
+          <span class="backend-dot ${state}"></span>
+          <span class="backend-name">${escapeHtml(b.label || b.name)}</span>
+          ${isCurActive ? '<svg class="ic ic-sm"><use href="#i-check"/></svg>' : ''}
+        </span>
+        <span class="backend-meta" style="display:block">
+          <span class="${state}">${escapeHtml(statusText)}</span> · ${b.freeTier ? 'Free' : 'Paid'} · ${b.turns} ${b.turns === 1 ? 'turn' : 'turns'}
+        </span>
+      </button>
     `;
   }
-  elBackendCards.innerHTML = html;
+  if (html === lastBackendHtml) return;
+  elBackendCards.innerHTML = lastBackendHtml = html;
 }
 
 // Strategy Switcher
@@ -258,7 +322,7 @@ async function setStrategy(strategy) {
     const data = await res.json();
     if (data.ok) {
       updateStrategyPills(strategy);
-      showToast(`Strategy updated to: ${strategy.toUpperCase()}`);
+      showToast(`Routing: ${strategy.replace('-', ' ')}`);
       loadStatus();
     }
   } catch (err) {
@@ -267,7 +331,7 @@ async function setStrategy(strategy) {
 }
 
 // Pin Backend
-window.pinBackend = async function (name) {
+async function pinBackend(name) {
   try {
     const res = await fetch('/api/use', {
       method: 'POST',
@@ -277,13 +341,13 @@ window.pinBackend = async function (name) {
     const data = await res.json();
     if (data.ok) {
       elBackendPinSelect.value = name;
-      showToast(`Pinned active CLI to: ${name}`);
+      showToast(`Next turn goes to ${name}`);
       loadStatus();
     }
   } catch (err) {
     console.error(err);
   }
-};
+}
 
 // Reset Limits
 async function resetAllLimits() {
@@ -295,7 +359,7 @@ async function resetAllLimits() {
     });
     const data = await res.json();
     if (data.ok) {
-      showToast('Cleared all quota and cooldown marks.');
+      showToast('All limits cleared');
       loadStatus();
     }
   } catch (err) {
@@ -303,50 +367,50 @@ async function resetAllLimits() {
   }
 }
 
-// Auto-Scan Modal
+// Scan sheet
 async function openScanModal() {
-  elScanModal.style.display = 'flex';
-  elScanResultsList.innerHTML = '<div class="loading-spinner">Scanning system PATH for CLIs...</div>';
+  // grow out of the button that was pressed
+  const from = elBtnScan.getBoundingClientRect();
+  const sheet = elScanModal.querySelector('.sheet');
+  closeDrawers();
+  sheet.style.transformOrigin = from.width ? `${from.left}px ${from.top}px` : '50% 50%';
+  elScanModal.classList.add('open');
+  elScanResultsList.innerHTML = '<div class="placeholder">Scanning…</div>';
+  elBtnAutoConnectAll.disabled = true;
 
   try {
     const res = await fetch('/api/scan');
     const data = await res.json();
     if (!data.ok) throw new Error('API error');
     renderScanResults(data.scanned);
+    elBtnAutoConnectAll.disabled = false;
   } catch (err) {
-    const fallbackScanned = [
-      { name: 'agy', label: 'Antigravity (Google)', path: '/Users/n00b/.local/bin/agy', installed: true },
-      { name: 'claude', label: 'Claude Code (Anthropic)', path: '/Users/n00b/.local/bin/claude', installed: true },
-      { name: 'kilo', label: 'Kilo Code', path: '/Users/n00b/.local/bin/kilo', installed: true },
-      { name: 'freebuff', label: 'Freebuff AI', path: '/Users/n00b/.local/bin/freebuff', installed: true },
-      { name: 'qwen', label: 'Qwen Code', path: '/Users/n00b/.local/bin/qwen', installed: true },
-      { name: 'junie', label: 'Junie (JetBrains)', path: '/Users/n00b/.local/bin/junie', installed: true },
-      { name: 'opencode', label: 'OpenCode', path: 'not found on PATH', installed: false },
-    ];
-    renderScanResults(fallbackScanned);
+    elScanResultsList.innerHTML = '<div class="placeholder">The scan failed. Check that relay desktop is still running.</div>';
   }
 }
 
 function renderScanResults(scanned) {
-  let html = '';
-  for (const c of scanned) {
-    html += `
+  // what was found goes first
+  const sorted = [...scanned].sort((a, b) => Number(b.installed) - Number(a.installed));
+  elScanResultsList.innerHTML = sorted
+    .map((c) => {
+      const where = c.installed && c.path ? c.path : 'Not installed';
+      return `
       <div class="scan-item">
-        <div class="scan-item-info">
-          <h4>${c.label} (${c.name})</h4>
-          <p>${c.path && c.path !== 'not found on PATH' ? c.path : 'Binary not found in PATH'}</p>
+        <div>
+          <h3>${escapeHtml(c.label || c.name)}</h3>
+          <p title="${escapeHtml(where)}">${escapeHtml(where)}</p>
         </div>
-        <span class="scan-status-badge ${c.installed ? 'found' : 'missing'}">
-          ${c.installed ? '<svg class="ic ic-sm"><use href="#i-check"/></svg> Installed' : 'Not found'}
+        <span class="scan-status ${c.installed ? 'found' : ''}">
+          ${c.installed ? '<svg class="ic ic-sm"><use href="#i-check"/></svg> Installed' : escapeHtml(c.name)}
         </span>
-      </div>
-    `;
-  }
-  elScanResultsList.innerHTML = html;
+      </div>`;
+    })
+    .join('');
 }
 
 async function performAutoConnect() {
-  elScanResultsList.innerHTML = '<div class="loading-spinner">Auto-connecting detected CLIs...</div>';
+  elScanResultsList.innerHTML = '<div class="placeholder">Connecting…</div>';
   try {
     const res = await fetch('/api/scan', {
       method: 'POST',
@@ -355,8 +419,9 @@ async function performAutoConnect() {
     });
     const data = await res.json();
     if (data.ok) {
-      elScanModal.style.display = 'none';
-      showToast(`Auto-connected ${data.autoConnect.added.length} new CLIs.`);
+      closeScan();
+      const added = data.autoConnect.added.length;
+      showToast(added ? `Connected ${added} new ${added === 1 ? 'CLI' : 'CLIs'}` : 'No new CLIs to connect');
       loadStatus();
     }
   } catch (err) {
@@ -381,9 +446,10 @@ async function sendPrompt() {
   isBusy = true;
   setRunningState(true);
   elWelcomeBanner.style.display = 'none';
+  if (viewingSid) showCurrentSession();
 
   // Append User Bubble
-  appendMessage({ role: 'user', text: prompt, time: new Date().toLocaleTimeString() });
+  appendMessage({ role: 'user', text: prompt, time: clock() });
   elPromptInput.value = '';
   elPromptInput.style.height = 'auto';
 
@@ -448,9 +514,9 @@ function handleSseEvent(type, data, botEl) {
       botEl.querySelector('.msg-bubble').insertBefore(stepper, textBody);
     }
     const stepsHtml = data.steps.map((s, idx) => {
-      const tag = s.model ? `${s.backend}:${s.model}` : s.backend;
+      const tag = escapeHtml(s.model ? `${s.backend}:${s.model}` : s.backend);
       return `<span class="pipeline-step ${idx === 0 ? 'active' : ''}" data-step="${s.stepNumber}">
-        ${s.stepNumber}. ${s.title}: <b>${tag}</b>
+        ${s.stepNumber}. ${escapeHtml(s.title)}: <b>${tag}</b>
       </span>`;
     }).join(' <span class="pipeline-arrow">→</span> ');
     stepper.innerHTML = `
@@ -488,7 +554,7 @@ function handleSseEvent(type, data, botEl) {
         el.className = 'pipeline-step completed';
       });
     }
-    showToast(`Multi-stage pipeline complete (${data.totalSteps} stages).`);
+    showToast(`All ${data.totalSteps} steps finished`);
     appendTerminalLine(`[Multi-Step Pipeline] All ${data.totalSteps} stages completed`);
   } else if (type === 'cli_event') {
     const evt = data.event;
@@ -508,12 +574,12 @@ function handleSseEvent(type, data, botEl) {
     } else if (evt.type === 'tool_use') {
       const toolBox = document.createElement('div');
       toolBox.className = 'tool-box';
-      toolBox.innerHTML = `<svg class="ic ic-sm"><use href="#i-tool"/></svg> Tool · ${escapeHtml(evt.name)} ${escapeHtml(JSON.stringify(evt.input || ''))}`;
+      toolBox.innerHTML = `<svg class="ic ic-sm"><use href="#i-tool"/></svg><span>${escapeHtml(evt.name)} ${escapeHtml(JSON.stringify(evt.input || ''))}</span>`;
       botEl.querySelector('.msg-bubble').insertBefore(toolBox, textBody);
       appendTerminalLine(`[Tool Call] ${evt.name}`);
     }
   } else if (type === 'failover') {
-    showToast(`${data.from} rate-limited → failing over to ${data.next || 'next in pool'}...`);
+    showToast(`${data.from} hit its limit. Switching to ${data.next || 'the next CLI'}.`);
     appendTerminalLine(`[Failover] ${data.from} quota exceeded -> Switching to ${data.next}`, 'warn');
   } else if (type === 'turn_end') {
     if (!textBody.innerHTML && data.text) {
@@ -529,16 +595,19 @@ function handleSseEvent(type, data, botEl) {
   }
 }
 
+function clock(t = Date.now()) {
+  return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
 function createBotMessagePlaceholder() {
   const row = document.createElement('div');
   row.className = 'message-row bot';
   row.innerHTML = `
-    <div class="msg-avatar bot-avatar">◆</div>
     <div class="msg-bubble">
       <div class="msg-header">
-        <span class="msg-author">Relay Agent</span>
+        <span class="msg-author">Relay</span>
         <span class="msg-badge">Processing</span>
-        <span class="msg-time">${new Date().toLocaleTimeString()}</span>
+        <span class="msg-time">${clock()}</span>
       </div>
       <div class="msg-text"></div>
     </div>
@@ -551,16 +620,14 @@ function appendMessage({ role, text, time, backend }) {
   const row = document.createElement('div');
   row.className = `message-row ${isUser ? 'user' : 'bot'}`;
   row.innerHTML = `
-    ${!isUser ? '<div class="msg-avatar bot-avatar">◆</div>' : ''}
     <div class="msg-bubble">
       <div class="msg-header">
-        <span class="msg-author">${isUser ? 'You' : 'Relay Agent'}</span>
-        ${backend ? `<span class="msg-badge">${backend}</span>` : ''}
+        <span class="msg-author">${isUser ? 'You' : 'Relay'}</span>
+        ${backend ? `<span class="msg-badge">${escapeHtml(backend)}</span>` : ''}
         <span class="msg-time">${time || ''}</span>
       </div>
       <div class="msg-text">${escapeHtml(text)}</div>
     </div>
-    ${isUser ? '<div class="msg-avatar user-avatar">Y</div>' : ''}
   `;
   elMessagesContainer.appendChild(row);
   scrollToBottom();
@@ -581,14 +648,14 @@ function scrollToBottom() {
 function setRunningState(running) {
   elBtnSend.style.display = running ? 'none' : 'flex';
   elBtnAbort.style.display = running ? 'flex' : 'none';
-  elStatusDot.className = `status-indicator ${running ? 'busy' : 'ready'}`;
-  elStatusText.textContent = running ? 'Executing turn across pool...' : 'Ready';
+  elStatusDot.className = `status-dot ${running ? 'busy' : 'ready'}`;
+  elStatusText.textContent = running ? 'Working…' : 'Ready';
 }
 
 async function abortTurn() {
   try {
     await fetch('/api/abort', { method: 'POST' });
-    showToast('Aborted current execution.');
+    showToast('Stopped');
   } catch (err) {
     console.error(err);
   }
@@ -616,11 +683,17 @@ async function handleQuickCommand(cmd) {
     await syncAgents();
   } else if (action === '/credits' || action === '/status' || action === '/backends') {
     await loadStatus();
-    showToast(`Updated status & credits view`);
+    showToast('Status refreshed');
   }
 }
 
 // Session Management
+let viewingSid = null; // a saved session being read; prompts still go to the current one
+
+function markViewing() {
+  elSessionList.querySelectorAll('.session-item').forEach((el) => el.classList.toggle('viewing', el.dataset.sid === viewingSid));
+}
+
 async function loadSessions() {
   try {
     const res = await fetch('/api/sessions');
@@ -630,72 +703,77 @@ async function loadSessions() {
     let html = '';
     for (const s of data.sessions.slice(0, 30)) {
       const isCur = currentStatus && s.sid === currentStatus.session;
-      const date = new Date(s.updated).toLocaleDateString();
+      const date = new Date(s.updated).toLocaleDateString([], { month: 'short', day: 'numeric' });
+      const turns = s.messages || 0;
       html += `
-        <div class="session-item ${isCur ? 'active' : ''}" onclick="switchSession('${s.sid}')">
-          <div class="session-item-title">
-            <span>${s.name || s.sid.slice(0, 8)}</span>
-            <span class="turns">${s.messages || 0} turns</span>
-          </div>
-          <div class="session-item-sub">${date} · ${s.cwd ? s.cwd.split('/').pop() : ''}</div>
-        </div>
+        <button class="session-item ${isCur ? 'active' : ''}" data-sid="${escapeHtml(s.sid)}">
+          <span class="session-title">
+            <span>${escapeHtml(s.name || s.sid.slice(0, 8))}</span>
+            <span class="session-turns">${turns} ${turns === 1 ? 'turn' : 'turns'}</span>
+          </span>
+          <span class="session-sub" style="display:block">${escapeHtml(date)} · ${escapeHtml(s.cwd ? s.cwd.split('/').pop() : '')}</span>
+        </button>
       `;
     }
-    elSessionList.innerHTML = html || '<div class="loading-placeholder">No sessions yet.</div>';
+    elSessionList.innerHTML = html || '<div class="placeholder">No sessions yet.</div>';
+    markViewing();
   } catch (err) {
-    elSessionList.innerHTML = `
-      <div class="session-item active">
-        <div class="session-item-title"><span>a306ace6</span><span class="turns">18 turns</span></div>
-        <div class="session-item-sub">Today · relay</div>
-      </div>
-      <div class="session-item">
-        <div class="session-item-title"><span>f491b20c</span><span class="turns">6 turns</span></div>
-        <div class="session-item-sub">Yesterday · api-gateway</div>
-      </div>
-    `;
-    if (!elMessagesContainer.querySelector('.message-row')) {
-      appendMessage({ role: 'user', text: 'explain the failover mechanism across my connected CLIs', time: '10:42 PM' });
-      appendMessage({
-        role: 'assistant',
-        text: 'Relay maintains a shared conversation session across Antigravity, Claude Code, Kilo, Freebuff, Qwen, Junie, and OpenCode. When a CLI encounters rate limits (HTTP 429) or runs out of credits, Relay automatically marks it, summarizes the transcript digest, and passes the torch to the next CLI in your selected strategy (Priority, Pool, or Free First) without losing context.',
-        time: '10:42 PM',
-        backend: 'agy',
-      });
-      elWelcomeBanner.style.display = 'none';
-    }
+    elSessionList.innerHTML = '<div class="placeholder">Sessions are unavailable.</div>';
   }
 }
 
-window.switchSession = async function (sid) {
+function showEntries(entries) {
+  elMessagesContainer.innerHTML = '';
+  for (const entry of entries) {
+    if (entry.kind === 'user') {
+      appendMessage({ role: 'user', text: entry.text, time: clock(entry.t) });
+    } else if (entry.kind === 'assistant') {
+      appendMessage({ role: 'assistant', text: entry.text, time: clock(entry.t), backend: entry.backend });
+    }
+  }
+  if (!elMessagesContainer.children.length) showWelcome();
+}
+
+function showWelcome() {
+  // clearing the list detaches the welcome screen, so put it back
+  elMessagesContainer.replaceChildren(elWelcomeBanner);
+  elWelcomeBanner.style.display = '';
+}
+
+// leave a saved session's history before adding to the current conversation
+function showCurrentSession() {
+  viewingSid = null;
+  elMessagesContainer.innerHTML = '';
+  markViewing();
+}
+
+async function switchSession(sid) {
+  if (isBusy) return;
   try {
-    const res = await fetch(`/api/session?id=${sid}`);
+    const res = await fetch(`/api/session?id=${encodeURIComponent(sid)}`);
     const data = await res.json();
     if (!data.ok) return;
 
-    elWelcomeBanner.style.display = 'none';
-    elMessagesContainer.innerHTML = '';
-    for (const entry of data.session.entries) {
-      if (entry.kind === 'user') {
-        appendMessage({ role: 'user', text: entry.text, time: new Date(entry.t).toLocaleTimeString() });
-      } else if (entry.kind === 'assistant') {
-        appendMessage({ role: 'assistant', text: entry.text, time: new Date(entry.t).toLocaleTimeString(), backend: entry.backend });
-      }
-    }
-    loadStatus();
+    showEntries(data.session.entries);
+    viewingSid = currentStatus && sid === currentStatus.session ? null : sid;
+    markViewing();
+    closeDrawers();
+    if (viewingSid) showToast('Viewing a saved session. New messages go to the current one.');
   } catch (err) {
     console.error(err);
   }
-};
+}
 
 async function createNewSession() {
   try {
     const res = await fetch('/api/session/new', { method: 'POST' });
     const data = await res.json();
     if (data.ok) {
-      elMessagesContainer.innerHTML = '';
-      elWelcomeBanner.style.display = 'block';
-      showToast('Created fresh session!');
-      loadStatus();
+      viewingSid = null;
+      showWelcome();
+      closeDrawers();
+      showToast('New session');
+      await loadStatus();
       loadSessions();
     }
   } catch (err) {
@@ -703,24 +781,28 @@ async function createNewSession() {
   }
 }
 
-// AGENTS.md Sync
+// AGENTS.md
+function showAgents(data) {
+  elAgentsPreview.textContent = data.block || `Nothing synced yet.\n\n${data.file || ''}`;
+}
+
 async function syncAgents() {
   try {
-    await fetch('/api/status'); // Triggers app sync
-    showToast('AGENTS.md progress block refreshed.');
-    loadAgentsMd();
+    const res = await fetch('/api/sync', { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    showAgents(data);
+    showToast('AGENTS.md updated');
   } catch (err) {
-    console.error(err);
+    showToast("Couldn't update AGENTS.md");
   }
 }
 
 async function loadAgentsMd() {
   try {
-    const res = await fetch('/api/status');
+    const res = await fetch('/api/agents');
     const data = await res.json();
-    if (data.status?.agents) {
-      elAgentsPreview.textContent = `File: ${data.status.agents}\nSynced to: ${(data.status.syncedTo || []).join(', ')}`;
-    }
+    if (data.ok) showAgents(data);
   } catch (err) {
     console.error(err);
   }
@@ -740,12 +822,12 @@ async function loadLogs() {
 }
 
 // Toast
+let toastTimer = null;
 function showToast(msg) {
   elFailoverText.textContent = msg;
-  elFailoverToast.style.display = 'block';
-  setTimeout(() => {
-    elFailoverToast.style.display = 'none';
-  }, 4000);
+  elFailoverToast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => elFailoverToast.classList.remove('show'), 4000);
 }
 
 function escapeHtml(str) {

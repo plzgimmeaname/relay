@@ -290,7 +290,7 @@ The same backends can be declared in `~/.relay/config.json`:
 npm test
 ```
 
-57 checks, mostly against fake CLIs: failover on quota, native resume vs digest import,
+58 checks, mostly against fake CLIs: failover on quota, native resume vs digest import,
 text-dialect inlining, AGENTS.md block replacement, pinning, cooldown vs hard
 marks, cross-directory references, protocol classification from real `--help`
 output, the connect wizard, interruption, missing binaries, auto mode, tags, skills and the desktop server. The terminal-screen

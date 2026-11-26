@@ -955,6 +955,27 @@ test('desktop app: tags, skills and /auto work there just as in the terminal', a
   }
 });
 
+test('desktop "Sync now" writes AGENTS.md and shows only relay\'s block', async () => {
+  reset(claudes('qa'));
+  const { createServerInstance } = require('../lib/server');
+  const dir = path.join(root, 'syncproj');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'AGENTS.md'), '# private project notes\n');
+  const web = createServerInstance({ cwd: dir });
+  const { url } = await web.listen(0);
+  try {
+    assert.equal((await (await fetch(`${url}/api/agents`)).json()).block, '');
+    await (await fetch(`${url}/api/prompt`, { method: 'POST', body: JSON.stringify({ prompt: 'remember the blue door' }) })).text();
+    assert.equal((await (await fetch(`${url}/api/sync`, { method: 'POST' })).json()).ok, true);
+    const shown = (await (await fetch(`${url}/api/agents`)).json()).block;
+    assert.match(shown, /blue door/);
+    assert.ok(!shown.includes('private project notes'));
+    assert.match(fs.readFileSync(path.join(dir, 'AGENTS.md'), 'utf8'), /private project notes/);
+  } finally {
+    await web.close();
+  }
+});
+
 test('desktop server refuses other websites and rebound host names', async () => {
   reset(claudes('qa'));
   const { createServerInstance } = require('../lib/server');

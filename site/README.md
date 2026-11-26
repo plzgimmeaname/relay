@@ -22,7 +22,7 @@ For GitHub Pages, set the source to `/main/site` in the repository settings.
 
 - `index.html` — page structure and copy
 - `styles.css` — design system, layout and responsive rules
-- `app.js` — copy buttons, screenshot tabs, strategy switcher, mobile menu, scroll reveals
+- `app.js` — copy buttons, screenshot tabs, strategy switcher, segmented-control thumbs, mobile menu, scroll reveals
 - `assets/` — screenshots sourced from `../docs/media/`
 - `favicon.svg` — brand mark
 
