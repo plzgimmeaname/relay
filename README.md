@@ -12,8 +12,8 @@ rotation picks up mid-task with the transcript in hand.
   Choose between strict priority failover, round-robin credit pooling to prevent single-provider
   rate limits, or free-tier-first to burn zero-cost quotas before touching paid credits.
 - **Auto-scan discovery** — 1-click detection of installed CLIs (`relay scan --auto`).
-- **Relay Desktop Companion App** — sleek dark desktop application (`relay desktop`) with
-  live credit meters, quota countdowns, interactive chat, and terminal streaming.
+- **Desktop app** — `relay desktop` is a chat app over your CLIs: history and search, formatted
+  replies, attachments, model choice, edit and regenerate, previews, light and dark.
 - **39 built-in CLI configs** — agy, claude, kilo, freebuff, qwen, junie, opencode, aider,
   cursor, copilot, ollama, gemini, openai, goose, cody, openhands, llm, sgpt, mentat, plandex,
   cline and more. `relay scan --auto` connects whichever are installed.
@@ -44,7 +44,7 @@ Requires Node 18+. Nothing is installed into `~/.relay` until you run it.
 
 ```sh
 relay                          # interactive shell
-relay desktop                  # launch the desktop companion app
+relay desktop                  # launch the desktop app
 relay scan --auto              # auto-detect and connect installed CLIs
 relay credits                  # view quota health & credit pool across all CLIs
 relay strategy pool            # balance turns across CLIs to avoid rate limits
@@ -115,6 +115,25 @@ CLI-specific settings such as `allowed-tools` are dropped. A skill is instructio
 follow, so read it (`relay skill show <name>`) before using one you didn't write.
 
 ## Desktop app
+
+![The Relay desktop app](docs/media/desktop_main.png)
+
+- **Chats** are relay sessions, shared with the terminal. Open an old one to carry on with it;
+  search, rename, pin, export as Markdown, or delete (with undo; deleted chats move to
+  `~/.relay/trash/`).
+- **Replies** render headings, lists, tables and code blocks with copy buttons. Thinking and tool
+  use fold away, a notice appears when relay switches CLIs, and the activity log shows raw events.
+- **Edit and regenerate** branch the chat when later messages would be lost, so the original stays.
+  Files a CLI already changed are **not** rolled back.
+- **Message box:** choose Automatic or a CLI and model, attach up to 8 files (8 MB each; text is
+  placed in the prompt, other files are passed as a path), `/` for commands and skills, `@` for a CLI.
+- **Preview** shows HTML and SVG from a reply with scripts and network loads blocked.
+- **Also:** project folder switching, custom instructions (`NOTES.md`, used by the terminal too),
+  routing and CLI order, logs, light/dark, text size, and shortcuts (⌘K search, ⇧⌘O new chat,
+  ⌘B sidebar, ⌘. stop).
+- **Dictation** is off by default. It uses the browser's speech service; Chrome sends the audio to Google.
+- **Not included:** image generation, share links and reply ratings; nothing local could power them.
+  One reply runs at a time.
 
 `relay desktop` accepts the same input as the shell: `@qwen …`, `@claude /cost`, imported skills
 (`/name …`), `/skill list|show|use` and `/auto`. Anything that needs a terminal (a CLI's own UI or
@@ -290,8 +309,8 @@ The same backends can be declared in `~/.relay/config.json`:
 npm test
 ```
 
-58 checks, mostly against fake CLIs: failover on quota, native resume vs digest import,
+66 checks, mostly against fake CLIs: failover on quota, native resume vs digest import,
 text-dialect inlining, AGENTS.md block replacement, pinning, cooldown vs hard
 marks, cross-directory references, protocol classification from real `--help`
-output, the connect wizard, interruption, missing binaries, auto mode, tags, skills and the desktop server. The terminal-screen
+output, the connect wizard, interruption, missing binaries, auto mode, tags, skills, the desktop server, desktop chats and attachments, and safe reply rendering. The terminal-screen
 (`pty`) and probe checks depend on timing and can occasionally time out.

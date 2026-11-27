@@ -88,10 +88,11 @@
 
   /* Showcase tabs -------------------------------------------------------- */
   var showcaseCaptions = {
-    overview: "A single view of every backend: health, quota, sessions and the active conversation.",
-    failover: "When a CLI hits its limit, Relay marks it in cooldown and hands the turn to the next ready agent.",
-    scan: "One click finds the coding CLIs installed on your machine and connects them automatically.",
-    terminal: "Watch raw agent output stream live while Relay keeps the shared transcript in sync."
+    overview: "Your chats in the sidebar, formatted replies, and one box to ask any connected CLI.",
+    failover: "When a CLI hits its limit, Relay tells you and hands the same turn to the next ready one.",
+    preview: "Open HTML or SVG from a reply beside the chat. Scripts and network loads stay blocked.",
+    search: "Press Command K to find any past chat or run a command.",
+    settings: "Choose how turns are routed and which CLI goes first."
   };
   var showcaseCaption = document.getElementById("showcaseCaption");
   var showcaseTabs = Array.prototype.slice.call(document.querySelectorAll("[data-showcase]"));

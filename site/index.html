@@ -10,7 +10,7 @@
   <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Relay — One session. Every AI coding CLI.">
-  <meta property="og:description" content="Never lose your flow to a rate limit. Shared transcript, credit failover, and a desktop companion for the CLIs you already use.">
+  <meta property="og:description" content="Never lose your flow to a rate limit. Shared transcript, credit failover, and a desktop AI app for the CLIs you already use.">
   <meta property="og:image" content="https://raw.githubusercontent.com/plzgimmeaname/relay/main/site/assets/app-overview.png">
   <meta property="og:url" content="https://plzgimmeaname.github.io/relay/">
   <meta name="twitter:card" content="summary_large_image">
@@ -98,53 +98,29 @@
           </ul>
         </div>
 
-        <div class="hero-visual reveal" aria-label="Preview of a Relay session handing off from Claude to Qwen">
+        <div class="hero-visual reveal" aria-label="Example chat in the Relay app: Claude Code reaches its limit and Qwen Code carries on">
           <div class="mock-window">
             <div class="mock-topbar">
               <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
-              <span class="mock-title">relay — session / 8f2a</span>
+              <span class="mock-title">Auth refactor</span>
               <span class="mock-live">Example</span>
             </div>
             <div class="mock-body">
-              <div class="mock-prompt">
-                <span class="mock-tag">YOU</span>
-                <p>Refactor the auth flow, then write the tests.</p>
+              <p class="mock-prompt">Refactor the auth flow, then write the tests.</p>
+              <div class="mock-turn">
+                <p class="mock-who"><svg aria-hidden="true"><use href="#i-logo"/></svg> Claude Code</p>
+                <p>Token refresh now lives in one place. Starting on the tests.</p>
               </div>
-              <ol class="mock-timeline">
-                <li class="mock-event is-done">
-                  <span class="event-mark"><svg class="icon"><use href="#i-check"/></svg></span>
-                  <div class="event-body"><strong>claude / sonnet</strong><span>Planned the refactor · 12 turns</span></div>
-                  <span class="event-state">complete</span>
-                </li>
-                <li class="mock-event is-warn">
-                  <span class="event-mark"><svg class="icon"><use href="#i-bolt"/></svg></span>
-                  <div class="event-body"><strong>quota reached</strong><span>Weekly limit detected automatically</span></div>
-                  <span class="event-state">handoff</span>
-                </li>
-                <li class="mock-event is-active">
-                  <span class="event-mark"><svg class="icon"><use href="#i-arrow"/></svg></span>
-                  <div class="event-body"><strong>qwen</strong><span>Implementing · 12 turns restored</span></div>
-                  <span class="event-state">running</span>
-                </li>
-                <li class="mock-event is-queued">
-                  <span class="event-mark"><svg class="icon"><use href="#i-clock"/></svg></span>
-                  <div class="event-body"><strong>freebuff</strong><span>Writing tests next</span></div>
-                  <span class="event-state">queued</span>
-                </li>
-              </ol>
-              <div class="mock-footer">
-                <div class="mock-chips" aria-hidden="true">
-                  <span class="backend-chip violet">claude</span>
-                  <span class="backend-chip cyan">qwen</span>
-                  <span class="backend-chip green">freebuff</span>
-                </div>
-                <span class="mock-context">context carried →</span>
+              <p class="mock-notice">Claude Code hit its limit. Switched to Qwen Code.</p>
+              <div class="mock-turn">
+                <p class="mock-who"><svg aria-hidden="true"><use href="#i-logo"/></svg> Qwen Code</p>
+                <p>I picked up from the shared transcript and added three tests.</p>
+              </div>
+              <div class="mock-composer" aria-hidden="true">
+                <span class="mock-placeholder">Message Relay</span>
+                <div class="mock-bar"><svg class="icon"><use href="#i-plus"/></svg><span class="mock-model"><i></i> Automatic</span><span class="mock-send"><svg class="icon"><use href="#i-arrow"/></svg></span></div>
               </div>
             </div>
-          </div>
-          <div class="mock-badge" aria-hidden="true">
-            <svg class="icon"><use href="#i-layers"/></svg>
-            <span><strong>39</strong> CLI configs ready</span>
           </div>
         </div>
       </div>
@@ -276,38 +252,52 @@
       <div class="container">
         <div class="section-head head-split reveal">
           <div>
-            <p class="kicker"><span class="kicker-line" aria-hidden="true"></span> The desktop companion</p>
-            <h2 id="product-title">See the whole fleet <span class="gradient-text">at a glance.</span></h2>
+            <p class="kicker"><span class="kicker-line" aria-hidden="true"></span> The desktop app</p>
+            <h2 id="product-title">One AI app <span class="gradient-text">for all your coding CLIs.</span></h2>
           </div>
-          <p class="section-lede">Live credit meters, quota countdowns, interactive chat, terminal streaming and saved sessions — in one focused desktop app.</p>
+          <p class="section-lede">A familiar chat window over the CLIs you already use. Pick one or let Relay choose, and keep the same conversation when it switches.</p>
         </div>
 
         <div class="showcase reveal">
           <div class="showcase-bar">
             <div class="showcase-tabs" role="tablist" aria-label="Product screenshots">
-              <button class="showcase-tab is-active" type="button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-showcase="overview">Overview</button>
-              <button class="showcase-tab" type="button" role="tab" id="tab-failover" aria-controls="panel-failover" aria-selected="false" tabindex="-1" data-showcase="failover">Failover</button>
-              <button class="showcase-tab" type="button" role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" tabindex="-1" data-showcase="scan">Auto-scan</button>
-              <button class="showcase-tab" type="button" role="tab" id="tab-terminal" aria-controls="panel-terminal" aria-selected="false" tabindex="-1" data-showcase="terminal">Terminal</button>
+              <button class="showcase-tab is-active" type="button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-showcase="overview">Chat</button>
+              <button class="showcase-tab" type="button" role="tab" id="tab-failover" aria-controls="panel-failover" aria-selected="false" tabindex="-1" data-showcase="failover">Handoff</button>
+              <button class="showcase-tab" type="button" role="tab" id="tab-preview" aria-controls="panel-preview" aria-selected="false" tabindex="-1" data-showcase="preview">Preview</button>
+              <button class="showcase-tab" type="button" role="tab" id="tab-search" aria-controls="panel-search" aria-selected="false" tabindex="-1" data-showcase="search">Search</button>
+              <button class="showcase-tab" type="button" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1" data-showcase="settings">Settings</button>
             </div>
-            <div class="showcase-url" aria-hidden="true"><span class="url-dot"></span> relay · desktop companion</div>
+            <div class="showcase-url" aria-hidden="true"><span class="url-dot"></span> relay desktop</div>
           </div>
           <div class="showcase-stage">
             <div class="showcase-panel is-active" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview" data-panel="overview">
-              <img src="assets/app-overview.png" alt="Relay desktop app showing the credit pool, saved sessions and live chat workspace" width="1200" height="820" loading="eager">
+              <img src="assets/app-overview.png" alt="Relay desktop app with chat history in a sidebar and a formatted reply with a code block" width="1240" height="820" loading="eager">
             </div>
             <div class="showcase-panel" role="tabpanel" id="panel-failover" aria-labelledby="tab-failover" data-panel="failover" hidden>
-              <img src="assets/app-failover.png" alt="Relay desktop app showing a backend in cooldown and the next CLI taking over" width="1200" height="820" loading="lazy">
+              <img src="assets/app-failover.png" alt="A chat where Claude Code reached its limit and Qwen Code carried on" width="1240" height="820" loading="lazy">
             </div>
-            <div class="showcase-panel" role="tabpanel" id="panel-scan" aria-labelledby="tab-scan" data-panel="scan" hidden>
-              <img src="assets/app-scan.png" alt="Relay auto-scan dialog detecting installed coding CLIs" width="1200" height="820" loading="lazy">
+            <div class="showcase-panel" role="tabpanel" id="panel-preview" aria-labelledby="tab-preview" data-panel="preview" hidden>
+              <img src="assets/app-preview.png" alt="An HTML code block from a reply shown in a side panel" width="1240" height="820" loading="lazy">
             </div>
-            <div class="showcase-panel" role="tabpanel" id="panel-terminal" aria-labelledby="tab-terminal" data-panel="terminal" hidden>
-              <img src="assets/app-terminal.png" alt="Relay desktop app with the live terminal stream open" width="1200" height="820" loading="lazy">
+            <div class="showcase-panel" role="tabpanel" id="panel-search" aria-labelledby="tab-search" data-panel="search" hidden>
+              <img src="assets/app-search.png" alt="The search window listing commands and past chats" width="1240" height="820" loading="lazy">
+            </div>
+            <div class="showcase-panel" role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" data-panel="settings" hidden>
+              <img src="assets/app-settings.png" alt="Settings for routing and the order of connected CLIs" width="1240" height="820" loading="lazy">
             </div>
           </div>
         </div>
-        <div class="showcase-caption" id="showcaseCaption" aria-live="polite">A single view of every backend: health, quota, sessions and the active conversation.</div>
+        <div class="showcase-caption" id="showcaseCaption" aria-live="polite">Your chats in the sidebar, formatted replies, and one box to ask any connected CLI.</div>
+        <ul class="app-features reveal">
+          <li><h3>Chat history</h3><p>Resume any chat where you left off. Search, rename, pin, export, and undo a delete.</p></li>
+          <li><h3>Formatted replies</h3><p>Headings, tables and code blocks with one-click copy. Tool use folds away until you want it.</p></li>
+          <li><h3>Edit and regenerate</h3><p>Change an earlier message and Relay branches the chat, so the original stays. File changes aren’t undone.</p></li>
+          <li><h3>Pick a model</h3><p>Leave it on Automatic, or choose a CLI and model from the message box.</p></li>
+          <li><h3>Attachments</h3><p>Add, drop or paste files. Text goes into the prompt; other files are shared as a path.</p></li>
+          <li><h3>Commands and skills</h3><p>Type <code>/</code> for commands and skills, or <code>@</code> to reach one CLI.</p></li>
+          <li><h3>Safe preview</h3><p>View HTML and SVG from a reply beside the chat, with scripts and network loads blocked.</p></li>
+          <li><h3>Your way</h3><p>Custom instructions, project folders, light and dark, shortcuts, and optional dictation.</p></li>
+        </ul>
       </div>
     </section>
 
@@ -426,7 +416,7 @@
             <h2 id="install-title">One install. <span class="gradient-text">Every agent at your fingertips.</span></h2>
             <p>Relay runs locally on your machine and works with the CLI tools you already use. No new infrastructure, no dependency chain, and no service between you and your agents.</p>
             <ul class="pricing-list">
-              <li><svg class="icon"><use href="#i-check"/></svg> Core CLI and desktop companion included</li>
+              <li><svg class="icon"><use href="#i-check"/></svg> Terminal app and desktop app included</li>
               <li><svg class="icon"><use href="#i-check"/></svg> All 39 bundled CLI configurations</li>
               <li><svg class="icon"><use href="#i-check"/></svg> Your credentials stay with your CLIs</li>
               <li><svg class="icon"><use href="#i-check"/></svg> Free and paid CLI tiers work side by side</li>
@@ -481,7 +471,7 @@
           </details>
           <details class="faq-item">
             <summary>Is the desktop app separate?<svg class="icon"><use href="#i-chevron"/></svg></summary>
-            <p>No. It ships with Relay. Run <code>relay desktop</code> for credit meters, quota countdowns, chat, terminal streaming and saved sessions — or stay in the terminal if that's your workflow.</p>
+            <p>No. It ships with Relay. Run <code>relay desktop</code> for a chat app with history, search, attachments and model choice, or stay in the terminal. Both use the same sessions. Voice dictation is off unless you turn it on; it uses your browser’s speech service, and Chrome sends that audio to Google.</p>
           </details>
         </div>
       </div>

@@ -1031,6 +1031,175 @@ test('scan keeps each cli\'s launch arguments, and text clis get no stream-json 
   }
 });
 
+// a desktop server on its own folder, plus helpers that speak its API
+async function desktop(folder) {
+  const { createServerInstance } = require('../lib/server');
+  const dir = path.join(root, folder);
+  fs.mkdirSync(dir, { recursive: true });
+  const web = createServerInstance({ cwd: dir });
+  const { url } = await web.listen(0);
+  const get = async (p) => (await fetch(url + p)).json();
+  const post = async (p, body = {}) => {
+    const res = await fetch(url + p, { method: 'POST', body: JSON.stringify(body) });
+    return { status: res.status, ...(await res.json()) };
+  };
+  const send = async (prompt, extra = {}) => (await fetch(`${url}/api/prompt`, { method: 'POST', body: JSON.stringify({ prompt, ...extra }) })).text();
+  return { web, url, dir, get, post, send };
+}
+
+test('desktop chats: opening an old chat resumes it, so new messages go there', async () => {
+  reset(claudes('qa'));
+  const d = await desktop('chat-resume');
+  try {
+    await d.send('first topic: the lighthouse');
+    const first = (await d.get('/api/chat')).chat;
+    assert.equal(first.title, 'first topic: the lighthouse');
+    await d.post('/api/chat/new');
+    await d.send('second topic: the harbor');
+    const second = (await d.get('/api/chat')).chat;
+    assert.notEqual(second.sid, first.sid);
+
+    assert.equal((await d.post('/api/chat/open', { sid: first.sid })).chat.sid, first.sid);
+    await d.send('and its keeper');
+    assert.ok(lastSeen().argv.includes('-r') || lastSeen().argv.includes('--resume'), "the CLI's own conversation is resumed");
+    assert.equal(lastSeen().sawDigest, false);
+    const texts = (await d.get('/api/chat')).chat.entries.filter((e) => e.kind === 'user').map((e) => e.text);
+    assert.deepEqual(texts, ['first topic: the lighthouse', 'and its keeper']);
+
+    const found = (await d.get('/api/chats?q=harbor')).chats;
+    assert.deepEqual(found.map((c) => c.sid), [second.sid]);
+    assert.match(found[0].snippet, /harbor/);
+
+    await d.post('/api/chat/new');
+    const blank = (await d.get('/api/chat')).chat.sid;
+    await d.post('/api/chat/new');
+    assert.equal((await d.get('/api/chat')).chat.sid, blank, 'an unused chat is reused');
+  } finally {
+    await d.web.close();
+  }
+});
+
+test('desktop chats: rename and pin keep their order; delete can be undone', async () => {
+  reset(claudes('qa'));
+  const d = await desktop('chat-manage');
+  try {
+    await d.send('keep me');
+    const { sid } = (await d.get('/api/chat')).chat;
+    const stamp = (await d.get('/api/chats')).chats.find((c) => c.sid === sid).updated;
+    await d.post('/api/chat/update', { sid, name: 'Renamed', pinned: true });
+    await d.send('another turn');
+    const row = (await d.get('/api/chats')).chats.find((c) => c.sid === sid);
+    assert.equal(row.title, 'Renamed', 'a later turn does not undo the rename');
+    assert.equal(row.pinned, true);
+    assert.ok(row.updated >= stamp);
+
+    await d.post('/api/chat/delete', { sid });
+    assert.ok(!(await d.get('/api/chats')).chats.some((c) => c.sid === sid));
+    assert.notEqual((await d.get('/api/chat')).chat.sid, sid);
+    await d.post('/api/chat/restore', { sid });
+    assert.ok((await d.get('/api/chats')).chats.some((c) => c.sid === sid));
+    assert.equal((await d.post('/api/chat/delete', { sid: sid.slice(0, 4) })).status, 400, 'only exact ids');
+    assert.equal((await d.post('/api/chat/restore', { sid: '../../config' })).status, 400);
+    assert.equal((await d.post('/api/chat/new', { cwd: '/definitely/not/here' })).status, 400);
+  } finally {
+    await d.web.close();
+  }
+});
+
+test('desktop chats: regenerating branches with the earlier context and keeps the original', async () => {
+  reset(claudes('qa'));
+  const d = await desktop('chat-branch');
+  try {
+    await d.send('the password hint is marmalade');
+    await d.send('what was the hint?');
+    const original = (await d.get('/api/chat')).chat;
+    const made = await d.post('/api/chat/branch', { index: 2 });
+    assert.equal(made.text, 'what was the hint?');
+    assert.notEqual(made.chat.sid, original.sid);
+    assert.equal(made.chat.entries.length, 2);
+    await d.send('what was the hint, again?');
+    assert.ok(!lastSeen().argv.includes('-r') && !lastSeen().argv.includes('--resume'), 'the old CLI conversation is not reused');
+    assert.equal(lastSeen().sawDigest, true, 'earlier turns travel as a digest');
+    await d.post('/api/chat/open', { sid: original.sid });
+    assert.equal((await d.get('/api/chat')).chat.entries.length, 4);
+  } finally {
+    await d.web.close();
+  }
+});
+
+test('desktop attachments: text reaches the CLI, the transcript stays readable, ids cannot escape', async () => {
+  reset(claudes('qa'));
+  const d = await desktop('chat-attach');
+  try {
+    const saved = (await d.post('/api/attach', { name: '../../notes.txt', data: Buffer.from('the secret ingredient is basil').toString('base64') })).file;
+    assert.equal(saved.name, 'notes.txt');
+    await d.send('summarize this', { attachments: [saved.id] });
+    assert.match(lastSeen().text, /summarize this[\s\S]*secret ingredient is basil/);
+    const entry = (await d.get('/api/chat')).chat.entries[0];
+    assert.equal(entry.text, 'summarize this');
+    assert.equal(entry.attachments[0].name, 'notes.txt');
+    fs.rmSync(path.join(root, 'last-seen'), { force: true });
+    assert.match(await d.send('x', { attachments: ['../../../etc'] }), /unknown attachment/);
+    assert.equal(fs.existsSync(path.join(root, 'last-seen')), false);
+  } finally {
+    await d.web.close();
+  }
+});
+
+test('desktop: one reply at a time, and the open chat cannot change under it', async () => {
+  reset({ order: ['slow'], backends: { slow: { command: process.execPath, prefixArgs: [path.join(DIR, 'fake-claude.js')], dialect: 'claude', env: { FAKE_MODE: 'ok', FAKE_NAME: 'slow', FAKE_STATE_DIR: root } } } });
+  const d = await desktop('chat-busy');
+  try {
+    const running = fetch(`${d.url}/api/prompt`, { method: 'POST', body: JSON.stringify({ prompt: 'take your time' }) });
+    const response = await running; // headers arrive while the CLI is still starting
+    assert.equal((await d.post('/api/chat/new')).status, 409);
+    assert.equal((await fetch(`${d.url}/api/prompt`, { method: 'POST', body: JSON.stringify({ prompt: 'me too' }) })).status, 409);
+    await response.text();
+    assert.equal((await d.post('/api/chat/new')).status, 200);
+  } finally {
+    await d.web.close();
+  }
+});
+
+test('desktop custom instructions are sent with every prompt and can be cleared', async () => {
+  reset(claudes('qa'));
+  const d = await desktop('chat-notes');
+  try {
+    await d.post('/api/notes', { text: 'Always answer in haiku.' });
+    assert.match((await d.get('/api/notes')).text, /haiku/);
+    assert.match(d.web.app.systemPrompt('qa'), /haiku/);
+    await d.post('/api/notes', { text: '  ' });
+    assert.equal((await d.get('/api/notes')).text, '');
+  } finally {
+    await d.web.close();
+  }
+});
+
+test('desktop preview can never run scripts or load anything', () => {
+  const page = fs.readFileSync(path.join(DIR, '..', 'desktop', 'public', 'index.html'), 'utf8');
+  const sandbox = page.match(/id="previewFrame"[^>]*sandbox="([^"]*)"/)[1];
+  assert.doesNotMatch(sandbox, /allow-(?:scripts|top-navigation|popups|forms)/);
+  assert.match(fs.readFileSync(path.join(DIR, '..', 'desktop', 'public', 'app.js'), 'utf8'), /default-src 'none'; style-src 'unsafe-inline'/);
+});
+
+test('desktop markdown: formats replies without letting them inject markup or fetch anything', async () => {
+  const { renderMarkdown } = require('../desktop/public/markdown');
+  const html = renderMarkdown('# Title\n\n**bold** and `<b>` and snake_case_name\n\n- one\n  - nested\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```html\n<script>alert(1)</script>\n```');
+  assert.match(html, /<h2>Title<\/h2>/);
+  assert.match(html, /<strong>bold<\/strong> and <code>&lt;b&gt;<\/code> and snake_case_name/);
+  assert.match(html, /<ul><li>one<ul><li>nested<\/li><\/ul><\/li><li>two<\/li><\/ul>/);
+  assert.match(html, /<td>2<\/td>/);
+  assert.match(html, /data-act="preview"/);
+  assert.match(html, /&lt;script&gt;/);
+
+  const hostile = renderMarkdown('<img src=x onerror=alert(1)>\n\n[a](javascript:alert(1)) [b](data:text/html,x) ![p](https://evil.example/x.png)\n\n[q](https://ok.example/"onmouseover="x)\n\n``` "><img src=x>\nhi\n```\n\n**<svg onload=1>**');
+  assert.doesNotMatch(hostile, /<(?:img|svg|script)\b/i);
+  assert.doesNotMatch(hostile, /href="(?:javascript|data):/i);
+  assert.doesNotMatch(hostile, /"onmouseover/i, 'the quote stays escaped inside the address');
+  assert.ok(renderMarkdown('```js\nunfinished').includes('unfinished'), 'a half-streamed fence still renders');
+  for (const odd of ['*'.repeat(5000), '['.repeat(5000), '> '.repeat(2000), '`'.repeat(3001)]) renderMarkdown(odd);
+});
+
 function sessionIdOf(agent) {
   return agent.session && agent.session.header.sid;
 }
